@@ -4,8 +4,9 @@ Painel somente-leitura do projeto Jira **SHMB**, com dados ao vivo via API REST 
 
 Arquivos deste repositório (todos soltos nesta mesma pasta, sem subpasta):
 
-- `github-server.js` — backend Express: busca as issues do Jira e serve a página.
+- `github-server.js` — backend Express: busca as issues do Jira, fala com a API do Notion (abas protegidas) e serve a página.
 - `github-index.html` / `github-style.css` / `github-app.js` — frontend (Board Jira + Métricas).
+- `github-protected.js` — frontend das abas protegidas por senha (Utilidades + Acesso): lock gate, cards de copiar script e lista de usuários.
 - `package.json` / `.gitignore` — **sem prefixo `github-`, de propósito**: `npm` só reconhece `package.json` nesse nome exato na raiz do projeto, e `git` só lê `.gitignore` nesse nome exato — renomear qualquer um dos dois quebra a ferramenta correspondente. Todos os outros arquivos do deploy usam o prefixo `github-` só para ficarem identificáveis entre os arquivos já existentes na pasta (`.gs`, `controle-shm-painel.html`, `CLAUDE.md`, `aprendizados.md`), que não têm nada a ver com este deploy.
 
 ## 1. Rodar localmente
@@ -48,7 +49,7 @@ git init
 # controle-shm-painel.html, CLAUDE.md, aprendizados.md). Esses arquivos
 # podem ir para o repositório também, se você quiser — a decisão é sua —
 # mas não é necessário para o deploy funcionar.
-git add package.json .gitignore github-server.js github-index.html github-style.css github-app.js github-README.md
+git add package.json .gitignore github-server.js github-index.html github-style.css github-app.js github-protected.js github-README.md
 
 git commit -m "Painel público Controle SHM (Board Jira + Métricas)"
 
@@ -73,8 +74,27 @@ Se você já tem um repositório GitHub existente apontando para esta pasta, bas
 8. Na aba **Environment** do serviço, adicione as variáveis:
    - `JIRA_EMAIL` — o e-mail da conta Jira usada para autenticar.
    - `JIRA_API_TOKEN` — gerado em [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
+   - `NOTION_TOKEN` — necessário só para as abas **Utilidades** e **Acesso** (login + lista de usuários). Ver seção "Configurar NOTION_TOKEN" abaixo.
 9. Clique em **Create Web Service** / **Deploy**. O Render builda e sobe o serviço automaticamente.
 10. Ao final, o Render gera uma URL pública no formato `https://<nome-do-serviço>.onrender.com` — esse é o link para compartilhar.
+
+## 3.1 Configurar `NOTION_TOKEN` (abas Utilidades e Acesso)
+
+As abas **Board Jira** e **Métricas** funcionam normalmente sem essa variável. Sem `NOTION_TOKEN` configurado, só as abas **Utilidades** e **Acesso** ficam indisponíveis — ao tentar fazer login (o modal de senha que abre ao clicar em qualquer uma delas), o servidor responde com erro claro: `NOTION_TOKEN não configurado nas variáveis de ambiente do servidor.`
+
+Para habilitar essas duas abas:
+
+1. Acesse [notion.so/my-integrations](https://www.notion.so/my-integrations) e crie uma **nova integração interna** (pode ser um token dedicado a este site, separado de qualquer integração já usada em outro script/Apps Script deste projeto).
+2. Copie o **"Internal Integration Secret"** gerado — é o valor que vai na variável `NOTION_TOKEN`.
+3. **Muito importante**: abra a página Notion **"Controle SHM / Acessos"** (a mesma que contém a tabela de usuários/senhas) e compartilhe-a com essa integração (botão "..." no canto superior direito da página → **Connections** → adicione a integração pelo nome). Sem esse passo, a API do Notion devolve 404/403 mesmo com o token certo — a integração só enxerga páginas que foram explicitamente conectadas a ela, exatamente como já documentado para o script de Relatório de Horas (`relatorio-horas.gs`).
+4. No Render, aba **Environment** do serviço, adicione `NOTION_TOKEN` com o valor copiado no passo 2.
+5. Redeploy (o Render costuma reiniciar o serviço automaticamente ao salvar uma nova env var).
+
+**Pontos a validar na primeira execução com um `NOTION_TOKEN` real** (nunca testado nesta sessão de desenvolvimento, sem credenciais disponíveis):
+
+- Se a tabela de acessos é encontrada de primeira pela busca recursiva de blocos (`findFirstTable_` em `github-server.js`), ou se está aninhada em algum bloco (toggle, coluna etc.) que precise de ajuste.
+- Se a ordem das colunas da tabela bate com o esperado: **Usuário (e-mail) | Tipo de Acesso | Senha | Visualiza | Quantidade de acessos totais** (só as 3 primeiras são lidas).
+- Se o endpoint `POST /api/access/login` reconhece corretamente e-mails/senhas reais cadastrados na tabela.
 
 ## 4. Sobre o plano Free do Render
 

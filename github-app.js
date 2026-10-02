@@ -18,14 +18,33 @@
 // ============================================================================
 // Navegação entre abas (Board Jira / Métricas)
 // ============================================================================
+// Abas protegidas por senha (Utilidades, Acesso) são geridas por
+// github-protected.js, que define window.PASSWORD_PROTECTED_SECTIONS_ /
+// window.protectedSectionsUnlocked_ / window.openLockGate_ antes deste
+// listener rodar (ambos os scripts são carregados de forma síncrona antes de
+// qualquer clique do usuário ser possível).
+function activateSection_(target) {
+  document.querySelectorAll('.topbar-nav-item').forEach((b) => b.removeAttribute('aria-current'));
+  const navBtn = document.querySelector('.topbar-nav-item[data-section="' + target + '"]');
+  if (navBtn) navBtn.setAttribute('aria-current', 'page');
+  document.querySelectorAll('.app-section').forEach((section) => {
+    section.hidden = section.id !== 'section-' + target;
+  });
+  if (target === 'utilidades' && window.onActivateUtilidades_) window.onActivateUtilidades_();
+  if (target === 'acesso' && window.onActivateAcesso_) window.onActivateAcesso_();
+}
+window.activateSection_ = activateSection_;
+
 document.querySelectorAll('.topbar-nav-item').forEach((navBtn) => {
   navBtn.addEventListener('click', () => {
     const target = navBtn.dataset.section;
-    document.querySelectorAll('.topbar-nav-item').forEach((b) => b.removeAttribute('aria-current'));
-    navBtn.setAttribute('aria-current', 'page');
-    document.querySelectorAll('.app-section').forEach((section) => {
-      section.hidden = section.id !== 'section-' + target;
-    });
+    const protectedSections = window.PASSWORD_PROTECTED_SECTIONS_ || [];
+    const unlocked = window.protectedSectionsUnlocked_ || {};
+    if (protectedSections.indexOf(target) !== -1 && !unlocked[target]) {
+      if (window.openLockGate_) window.openLockGate_(target);
+      return;
+    }
+    activateSection_(target);
   });
 });
 

@@ -16,6 +16,8 @@
     <nav class="topbar-nav">
       <button class="topbar-nav-item" type="button" data-section="site" aria-current="page">Board Jira</button>
       <button class="topbar-nav-item" type="button" data-section="metrics">Métricas</button>
+      <button class="topbar-nav-item" type="button" data-section="utilidades" id="navUtilidadesBtn">Utilidades <span class="nav-lock-badge" id="navUtilidadesLockBadge">🔒</span></button>
+      <button class="topbar-nav-item" type="button" data-section="acesso" id="navAcessoBtn">Acesso <span class="nav-lock-badge" id="navAcessoLockBadge">🔒</span></button>
     </nav>
     <button class="sync-btn" type="button" id="refreshBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="refreshIcon"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>
@@ -124,11 +126,100 @@
       </div>
     </section>
 
+    <section class="app-section" id="section-utilidades" hidden>
+      <div class="wrap">
+        <header>
+          <span class="eyebrow">Apps Script</span>
+          <h1>Utilidades</h1>
+          <p class="subtitle">Os dois scripts do sistema Controle SHM, prontos para copiar e colar no Apps Script.</p>
+        </header>
+
+        <div class="card">
+          <span class="filename">Código.gs — script principal (atualiza o slide de acompanhamento)</span>
+          <button class="copy-btn-big" type="button" id="copyBtnMain">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copiar Código.gs</span>
+          </button>
+          <div class="sync-status" id="copyStatusMain"></div>
+          <div class="link-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="link-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <a href="https://docs.google.com/presentation/d/1UTbUcUiHEhtalAJMghRa011cy7NxcblFqIJ3Hrn4c-c/edit" target="_blank" rel="noopener">docs.google.com/presentation/d/1UTbUcUiHEhtalAJMghRa011cy7NxcblFqIJ3Hrn4c-c</a>
+          </div>
+          <div class="toggle-row">
+            <button class="toggle-btn" type="button" data-target="panelCodeMain"><span class="chevron">▸</span> Ver código</button>
+            <button class="toggle-btn" type="button" data-target="panelStepsMain"><span class="chevron">▸</span> Como usar</button>
+          </div>
+          <div class="toggle-panel" id="panelCodeMain" hidden><pre class="code-block" id="codeBlockMain"></pre></div>
+          <div class="toggle-panel" id="panelStepsMain" hidden>
+            <ol>
+              <li>Abra a apresentação → <code>Extensões</code> → <code>Apps Script</code>.</li>
+              <li>Selecione tudo em <code>Código.gs</code> e apague.</li>
+              <li>Clique em <strong>Copiar Código.gs</strong> acima e cole no arquivo.</li>
+              <li>No dropdown ao lado de ▶ Executar, confirme <code>updateSlide</code> e clique em ▶ Executar. Na primeira vez, informe e-mail e API Token do Jira quando pedido.</li>
+              <li>Toda vez que quiser atualizar o relatório, volte aqui e clique em ▶ Executar de novo.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="filename">Relatório de Horas.gs</span>
+          <button class="copy-btn-big" type="button" id="copyBtnHours">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copiar Relatório de Horas.gs</span>
+          </button>
+          <div class="sync-status" id="copyStatusHours"></div>
+          <div class="toggle-row">
+            <button class="toggle-btn" type="button" data-target="panelCodeHours"><span class="chevron">▸</span> Ver código</button>
+            <button class="toggle-btn" type="button" data-target="panelStepsHours"><span class="chevron">▸</span> Como usar</button>
+          </div>
+          <div class="toggle-panel" id="panelCodeHours" hidden><pre class="code-block" id="codeBlockHours"></pre></div>
+          <div class="toggle-panel" id="panelStepsHours" hidden>
+            <ol>
+              <li>Abra a apresentação "Relatório de Horas" → <code>Extensões</code> → <code>Apps Script</code>.</li>
+              <li>Selecione tudo no arquivo de código e apague.</li>
+              <li>Clique em <strong>Copiar Relatório de Horas.gs</strong> acima e cole no arquivo.</li>
+              <li>No dropdown ao lado de ▶ Executar, confirme <code>generateHoursReport</code> e clique em ▶ Executar. Na primeira vez, informe o token de integração do Notion quando pedido.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="app-section" id="section-acesso" hidden>
+      <div class="wrap">
+        <header>
+          <span class="eyebrow">Controle de acesso</span>
+          <h1>Acesso</h1>
+          <p class="subtitle">Lista somente leitura dos usuários cadastrados para as abas protegidas.</p>
+        </header>
+        <div class="sync-status" id="acessoStatus">Carregando…</div>
+        <div class="site-table-wrap" id="acessoTableWrap"></div>
+        <p class="note">Para cadastrar, remover ou alterar senha de usuários, use o painel original em claude.ai.</p>
+      </div>
+    </section>
+
   </main>
 
   <p class="footer-note">Dados em tempo real do Jira (cache de até 60s) — painel somente leitura.</p>
 </div>
 
+<div class="comments-modal-overlay" id="lockGateOverlay" hidden>
+  <div class="comments-modal">
+    <div class="comments-modal-header">
+      <div class="comments-modal-title">🔒 Área protegida</div>
+      <button class="comments-modal-close" type="button" id="lockGateClose" aria-label="Fechar">✕</button>
+    </div>
+    <p class="note" style="margin-top: 0;">Digite o e-mail e a senha cadastrados na aba Acesso para entrar aqui.</p>
+    <div class="access-form-row">
+      <input class="access-email-input" type="email" id="lockGateEmailInput" placeholder="e-mail cadastrado">
+      <input class="access-email-input" type="password" id="lockGatePasswordInput" placeholder="senha">
+      <button class="access-save-btn" type="button" id="lockGateSubmitBtn">Entrar</button>
+    </div>
+    <div class="sync-status" id="lockGateStatus"></div>
+  </div>
+</div>
+
 <script src="/github-app.js"></script>
+<script src="/github-protected.js"></script>
 </body>
 </html>
