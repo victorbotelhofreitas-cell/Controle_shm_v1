@@ -14,6 +14,12 @@
  * O desbloqueio (variável em memória, reseta ao recarregar a página — sem
  * persistência) vale para as DUAS abas protegidas ao mesmo tempo, mesmo
  * padrão do protectedSectionsUnlocked_ original.
+ *
+ * Os cards "Export Snap Notion" e "Sincronizar Gravações BotDesign" (abaixo,
+ * em onActivateUtilidades_) chamam rotas novas do backend (POST
+ * /api/export-snap e POST /api/sync-gravacoes) em vez de usar MCP direto no
+ * browser como no painel original — nenhum dos dois foi testado ao vivo
+ * nesta sessão.
  */
 
 window.PASSWORD_PROTECTED_SECTIONS_ = ['utilidades', 'acesso'];
@@ -104,10 +110,12 @@ async function submitLockGate_() {
 
 // ============================================================================
 // Aba Utilidades — 2 cards de copiar script (Código.gs principal + Relatório
-// de Horas), reaproveitando .card/.copy-btn-big/.toggle-row/.toggle-panel do
-// painel original. Os botões "Export Snap Notion" e "Sincronizar Gravações
-// BotDesign" do original NÃO foram replicados aqui (dependem de Gmail/Notion
-// write via MCP, fora de escopo do site público).
+// de Horas) + 2 cards de ação direta no servidor (Export Snap Notion e
+// Sincronizar Gravações BotDesign), reaproveitando .card/.copy-btn-big/
+// .toggle-row/.toggle-panel do painel original. As duas ações que no
+// original rodavam via MCP direto no browser (Notion/Gmail) agora chamam
+// rotas do backend deste repositório (POST /api/export-snap e POST
+// /api/sync-gravacoes) — ver wireExportSnapButton_/wireSyncGravacoesButton_.
 // ============================================================================
 let utilidadesRendered_ = false;
 
@@ -122,6 +130,8 @@ window.onActivateUtilidades_ = function onActivateUtilidades_() {
 
   wireCopyButton_('copyBtnMain', 'copyStatusMain', () => SCRIPT_MAIN);
   wireCopyButton_('copyBtnHours', 'copyStatusHours', () => SCRIPT_HOURS);
+  wireExportSnapButton_();
+  wireSyncGravacoesButton_();
 
   document.querySelectorAll('.toggle-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -147,6 +157,94 @@ function wireCopyButton_(btnId, statusId, getText) {
       if (status) { status.textContent = 'Copiado!'; status.className = 'sync-status is-ok'; }
     } catch (e) {
       if (status) { status.textContent = 'Não foi possível copiar automaticamente — selecione o texto em "Ver código" e copie manualmente.'; status.className = 'sync-status is-error'; }
+    }
+  });
+}
+
+// ============================================================================
+// Export Snap Notion — chama POST /api/export-snap no backend (porta Node da
+// função exportToNotion_ do painel original, que lá usava MCP direto no
+// browser). Nunca testado ao vivo nesta sessão (sem NOTION_TOKEN disponível).
+// ============================================================================
+function wireExportSnapButton_() {
+  const btn = document.getElementById('exportSnapBtn');
+  const status = document.getElementById('exportSnapStatus');
+  if (!btn) return;
+  const originalLabel = btn.querySelector('span') ? btn.querySelector('span').textContent : '';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    if (btn.querySelector('span')) btn.querySelector('span').textContent = 'Enviando…';
+    if (status) { status.textContent = 'Criando snap no Notion…'; status.className = 'sync-status'; }
+    try {
+      const res = await fetch('/api/export-snap', { method: 'POST' });
+      const payload = await res.json().catch(() => null);
+      if (res.ok && payload && payload.ok) {
+        if (status) {
+          status.className = 'sync-status is-ok';
+          status.textContent = '';
+          status.appendChild(document.createTextNode('Snap criado no Notion: ' + payload.title + '. '));
+          if (payload.url) {
+            const link = document.createElement('a');
+            link.href = payload.url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = 'Abrir página no Notion';
+            status.appendChild(link);
+          }
+        }
+      } else {
+        if (status) { status.textContent = (payload && payload.error) || 'Não foi possível criar o Snap no Notion.'; status.className = 'sync-status is-error'; }
+      }
+    } catch (e) {
+      if (status) { status.textContent = 'Falha ao chamar o servidor: ' + (e && e.message ? e.message : e); status.className = 'sync-status is-error'; }
+    } finally {
+      btn.disabled = false;
+      if (btn.querySelector('span')) btn.querySelector('span').textContent = originalLabel;
+    }
+  });
+}
+
+// ============================================================================
+// Sincronizar Gravações BotDesign — chama POST /api/sync-gravacoes no
+// backend (porta Node da função syncGravacoesBotDesign_ do painel original,
+// que lá usava o conector MCP Gmail direto no browser). O backend exige
+// GMAIL_REFRESH_TOKEN/GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET configurados
+// (ver github-README.md) — nunca testado ao vivo, nem na versão original.
+// ============================================================================
+function wireSyncGravacoesButton_() {
+  const btn = document.getElementById('syncGravacoesBtn');
+  const status = document.getElementById('syncGravacoesStatus');
+  if (!btn) return;
+  const originalLabel = btn.querySelector('span') ? btn.querySelector('span').textContent : '';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    if (btn.querySelector('span')) btn.querySelector('span').textContent = 'Sincronizando…';
+    if (status) { status.textContent = 'Buscando e-mails no Gmail (marcador # SHM)…'; status.className = 'sync-status'; }
+    try {
+      const res = await fetch('/api/sync-gravacoes', { method: 'POST' });
+      const payload = await res.json().catch(() => null);
+      if (res.ok && payload && payload.ok) {
+        if (status) {
+          status.className = 'sync-status is-ok';
+          status.textContent = '';
+          status.appendChild(document.createTextNode(payload.message || ((payload.added || 0) + ' vídeo(s) novo(s) adicionado(s).') + ' '));
+          if (payload.url) {
+            const link = document.createElement('a');
+            link.href = payload.url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = 'Abrir página no Notion';
+            status.appendChild(link);
+          }
+        }
+      } else {
+        if (status) { status.textContent = (payload && payload.error) || 'Não foi possível sincronizar as gravações.'; status.className = 'sync-status is-error'; }
+      }
+    } catch (e) {
+      if (status) { status.textContent = 'Falha ao chamar o servidor: ' + (e && e.message ? e.message : e); status.className = 'sync-status is-error'; }
+    } finally {
+      btn.disabled = false;
+      if (btn.querySelector('span')) btn.querySelector('span').textContent = originalLabel;
     }
   });
 }

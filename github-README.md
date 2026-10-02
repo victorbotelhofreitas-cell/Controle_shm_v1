@@ -74,7 +74,8 @@ Se você já tem um repositório GitHub existente apontando para esta pasta, bas
 8. Na aba **Environment** do serviço, adicione as variáveis:
    - `JIRA_EMAIL` — o e-mail da conta Jira usada para autenticar.
    - `JIRA_API_TOKEN` — gerado em [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
-   - `NOTION_TOKEN` — necessário só para as abas **Utilidades** e **Acesso** (login + lista de usuários). Ver seção "Configurar NOTION_TOKEN" abaixo.
+   - `NOTION_TOKEN` — necessário para as abas **Utilidades** e **Acesso** (login + lista de usuários) e para o card **Export Snap Notion**. Ver seção "Configurar NOTION_TOKEN" abaixo.
+   - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` / `GMAIL_REFRESH_TOKEN` — necessárias só para o card **Sincronizar Gravações BotDesign**. Ver seção "Configurar Gmail (Export Gravações BotDesign)" abaixo — **bem mais trabalhoso** que o Notion/Jira, e nunca testado ao vivo (nem na versão original do Artifact).
 9. Clique em **Create Web Service** / **Deploy**. O Render builda e sobe o serviço automaticamente.
 10. Ao final, o Render gera uma URL pública no formato `https://<nome-do-serviço>.onrender.com` — esse é o link para compartilhar.
 
@@ -95,6 +96,45 @@ Para habilitar essas duas abas:
 - Se a tabela de acessos é encontrada de primeira pela busca recursiva de blocos (`findFirstTable_` em `github-server.js`), ou se está aninhada em algum bloco (toggle, coluna etc.) que precise de ajuste.
 - Se a ordem das colunas da tabela bate com o esperado: **Usuário (e-mail) | Tipo de Acesso | Senha | Visualiza | Quantidade de acessos totais** (só as 3 primeiras são lidas).
 - Se o endpoint `POST /api/access/login` reconhece corretamente e-mails/senhas reais cadastrados na tabela.
+
+## 3.2 Export Snap Notion (card em Utilidades)
+
+Usa o mesmo `NOTION_TOKEN` da seção acima — nenhuma configuração extra. Ao clicar no card **Export Snap Notion**, o backend (rota `POST /api/export-snap` em `github-server.js`) busca os issues do Jira (reaproveitando o mesmo cache de `/api/issues`), monta um markdown do board agrupado por status (função `buildNotionReportMarkdown_`) e cria uma **subpágina nova** (nunca sobrescreve) dentro de "Controle SHM / Registro de Snaps" (ID fixo `3e8a28e673618086adc6e3b13dae1240`) via `POST /v1/pages` da API do Notion, com título `DDMMAAAA / Snap do Board`.
+
+**Pontos a validar na primeira execução real** (nunca testado nesta sessão):
+
+- Se a conversão markdown → blocos Notion (`buildNotionBlocksFromMarkdown_`/`mdLineToBlock_`/`richTextForLine_` em `github-server.js`) cobre bem o conteúdo real — ela suporta `##`/`###` (headings), `- ` (bullets), `> ` (quote), `**negrito**` e `[texto](url)` (links), o resto vira parágrafo simples.
+- Se a página pai aceita filhos de primeira via `parent.page_id` (comportamento padrão documentado da API do Notion, mas nunca chamado ao vivo aqui).
+- Boards muito grandes (mais de 100 blocos) são enviados em lotes (100 na criação + lotes de 100 via `PATCH /blocks/{id}/children`) — validar que o encadeamento de chamadas não estoura rate limit do Notion.
+
+## 3.3 Configurar Gmail (Export Gravações BotDesign)
+
+**Isto é bem mais trabalhoso que configurar Notion/Jira, e nunca foi testado ao vivo — nem na versão original do Artifact (`controle-shm-painel.html`), que usava um conector MCP Gmail nunca validado em sessão real.** O card **Sincronizar Gravações BotDesign** da aba Utilidades depende desse fluxo.
+
+Diferente do Jira/Notion (um token simples), a Gmail API exige um fluxo OAuth2 completo. Resumo do que você vai fazer **uma única vez**:
+
+1. **Criar um projeto no Google Cloud Console**: acesse [console.cloud.google.com](https://console.cloud.google.com), crie um projeto novo (ou reaproveite um existente).
+2. **Ativar a Gmail API**: no projeto, vá em "APIs e serviços" → "Biblioteca" → procure "Gmail API" → "Ativar".
+3. **Criar credenciais OAuth 2.0**: "APIs e serviços" → "Credenciais" → "Criar credenciais" → "ID do cliente OAuth" → tipo de aplicativo **"Aplicativo da Web"**.
+   - Em "URIs de redirecionamento autorizados", adicione: `https://<seu-app>.onrender.com/auth/gmail/callback` (troque `<seu-app>` pelo nome real do serviço no Render — ou `http://localhost:3000/auth/gmail/callback` se for testar localmente primeiro).
+   - Ao salvar, o Google mostra o **Client ID** e o **Client Secret** — são os valores de `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
+4. **Configurar a "tela de consentimento OAuth"** (se o Google pedir, geralmente na primeira vez): tipo "Externo" é suficiente, só precisa autorizar o escopo `.../auth/gmail.readonly` e adicionar a própria conta Gmail (a que recebe os e-mails com marcador "# SHM") como usuário de teste, se o app ficar em modo de teste.
+5. **Variáveis de ambiente no Render** (aba Environment do serviço):
+   - `GOOGLE_CLIENT_ID` — o Client ID do passo 3.
+   - `GOOGLE_CLIENT_SECRET` — o Client Secret do passo 3.
+   - `GOOGLE_REDIRECT_URI` — exatamente a mesma URL cadastrada no passo 3 (ex: `https://<seu-app>.onrender.com/auth/gmail/callback`).
+   - `GMAIL_REFRESH_TOKEN` — **ainda não existe neste ponto**, vem do passo 6.
+6. **Obter o refresh token (passo manual, uma vez só)**: depois do deploy com as 3 variáveis acima já configuradas, abra no navegador `https://<seu-app>.onrender.com/auth/gmail`, **logado na conta Gmail certa** (a que recebe os e-mails com marcador "# SHM"). Você será redirecionado para a tela de consentimento do Google — autorize. Você volta para `/auth/gmail/callback`, que mostra na própria página (texto simples) o valor do `GMAIL_REFRESH_TOKEN`. Copie esse valor e salve como a 4ª variável de ambiente no Render (`GMAIL_REFRESH_TOKEN`), depois pode fechar a aba.
+   - Se a página disser que nenhum `refresh_token` foi retornado, normalmente é porque essa conta já autorizou esse app antes (o Google só entrega refresh_token na primeira autorização). Revogue o acesso em [myaccount.google.com/permissions](https://myaccount.google.com/permissions) e repita o passo 6.
+7. Redeploy/reinicie o serviço no Render para carregar `GMAIL_REFRESH_TOKEN`.
+
+Depois disso, o botão **Sincronizar Gravações BotDesign** chama `POST /api/sync-gravacoes` (`github-server.js`), que: busca no Gmail (`gmail.users.messages.list` com query `"# SHM" tldv.io`) as mensagens candidatas, extrai data/assunto/link tl;dv de cada uma (`extractGmailBodyText_`/regex), busca o texto atual da página Notion "BotDesign (Gravações)" (ID fixo `3e4a28e6736180d8b945da0582398774`), filtra só os vídeos ainda não listados lá, e anexa um bloco divisor + um parágrafo por vídeo novo ao final da página via `PATCH /v1/blocks/{page_id}/children` (a API REST do Notion não tem um "substituir conteúdo" nativo como o MCP original usava — por isso vira "anexar ao final" em vez de reescrever a página inteira).
+
+**Pontos a validar na primeira execução real** (nunca testado, nem no original):
+
+- Se a query de busca `"# SHM" tldv.io` encontra os e-mails certos — "# SHM" pode ser um **label** do Gmail em vez de um termo de busca em texto livre; se não funcionar, tente trocar por `label:shm tldv.io` ou o nome exato do label/marcador usado na caixa de entrada.
+- Se o link tl;dv está mesmo no corpo `text/plain` do e-mail (`extractGmailBodyText_` em `github-server.js`) — se só aparecer em HTML, o código precisa ser ajustado para decodificar a parte `text/html` em vez de (ou além de) `text/plain`.
+- Se o refresh token da Gmail API expira por inatividade (tokens de apps em "modo de teste" no Google Cloud podem expirar em 7 dias) — se o card passar a dar erro de token inválido depois de um tempo sem uso, pode ser necessário publicar o app ("em produção") na tela de consentimento OAuth, ou repetir o passo 6.
 
 ## 4. Sobre o plano Free do Render
 

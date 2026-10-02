@@ -182,6 +182,56 @@
             </ol>
           </div>
         </div>
+
+        <div class="card">
+          <span class="filename">Export Snap Notion</span>
+          <p class="subtitle" style="margin-top: -8px;">Cria uma subpágina nova (histórico, nunca sobrescreve) dentro de "Controle SHM / Registro de Snaps" no Notion, com uma foto do Board Jira de agora.</p>
+          <button class="copy-btn-big" type="button" id="exportSnapBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg>
+            <span>Export Snap Notion</span>
+          </button>
+          <div class="sync-status" id="exportSnapStatus"></div>
+          <div class="link-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="link-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <a href="https://www.notion.so/3e8a28e673618086adc6e3b13dae1240" target="_blank" rel="noopener">Controle SHM / Registro de Snaps (Notion)</a>
+          </div>
+          <div class="toggle-row">
+            <button class="toggle-btn" type="button" data-target="panelStepsSnap"><span class="chevron">▸</span> Como usar</button>
+          </div>
+          <div class="toggle-panel" id="panelStepsSnap" hidden>
+            <ol>
+              <li>Clique em <strong>Export Snap Notion</strong> — roda direto aqui no site (chama o backend, que fala com o Jira e com o Notion).</li>
+              <li>Espera terminar (alguns segundos) — a mensagem abaixo do botão confirma sucesso ou mostra o erro.</li>
+              <li>Quando der certo, aparece um link "Abrir página no Notion" levando direto pro snap recém-criado.</li>
+              <li>Para ver o histórico completo de snaps já gerados, use o link "Controle SHM / Registro de Snaps" logo acima.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="filename">Sincronizar Gravações BotDesign</span>
+          <p class="subtitle" style="margin-top: -8px;">Busca no Gmail (marcador <code># SHM</code>) os vídeos de reunião gravados pela Alana via tl;dv e adiciona no Notion "BotDesign (Gravações)" só os que ainda não estão lá.</p>
+          <button class="copy-btn-big" type="button" id="syncGravacoesBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            <span>Sincronizar Gravações BotDesign</span>
+          </button>
+          <div class="sync-status" id="syncGravacoesStatus"></div>
+          <div class="link-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="link-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <a href="https://app.notion.com/p/BotDesign-Grava-es-3e4a28e6736180d8b945da0582398774?source=copy_link" target="_blank" rel="noopener">BotDesign (Gravações) (Notion)</a>
+          </div>
+          <div class="toggle-row">
+            <button class="toggle-btn" type="button" data-target="panelStepsGravacoes"><span class="chevron">▸</span> Como usar</button>
+          </div>
+          <div class="toggle-panel" id="panelStepsGravacoes" hidden>
+            <ol>
+              <li>Clique em <strong>Sincronizar Gravações BotDesign</strong> — roda direto aqui no site (o backend precisa ter o Gmail configurado, ver <code>github-README.md</code>).</li>
+              <li>Espera terminar (alguns segundos) — a mensagem abaixo do botão mostra quantos vídeos novos foram adicionados, ou que já estava tudo sincronizado.</li>
+              <li>Use o link "BotDesign (Gravações)" acima para abrir a página no Notion e conferir.</li>
+              <li>Se aparecer erro de "GMAIL_REFRESH_TOKEN não configurado", siga o passo a passo em <code>github-README.md</code> seção "Configurar Gmail".</li>
+            </ol>
+          </div>
+        </div>
       </div>
     </section>
 
