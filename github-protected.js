@@ -25,6 +25,12 @@
 window.PASSWORD_PROTECTED_SECTIONS_ = ['utilidades', 'acesso'];
 window.protectedSectionsUnlocked_ = {};
 let pendingLockTarget_ = null;
+// E-mail/papel de quem logou no lock gate — guardados em memória (reseta ao
+// recarregar a página, mesmo padrão de protectedSectionsUnlocked_). Usados
+// para: (1) mostrar/esconder o painel de administração na aba Acesso; (2)
+// preencher o e-mail do modal "Alterar minha senha".
+window.loggedInEmail_ = null;
+window.loggedInRole_ = null;
 
 function unlockProtectedSection_(target) {
   window.protectedSectionsUnlocked_[target] = true;
@@ -93,9 +99,12 @@ async function submitLockGate_() {
     const payload = await res.json().catch(() => null);
     if (res.ok && payload && payload.ok) {
       const target = pendingLockTarget_;
+      window.loggedInEmail_ = email;
+      window.loggedInRole_ = payload.role || 'comum';
       window.PASSWORD_PROTECTED_SECTIONS_.forEach(unlockProtectedSection_);
       closeLockGate_();
       if (target && window.activateSection_) window.activateSection_(target);
+      refreshAccessAdminPanelVisibility_();
     } else {
       status.textContent = (payload && payload.error) || 'E-mail ou senha incorretos.';
       status.className = 'sync-status is-error';
@@ -250,16 +259,31 @@ function wireSyncGravacoesButton_() {
 }
 
 // ============================================================================
-// Aba Acesso — login já feito pelo lock gate; aqui só carrega a lista
-// somente leitura (sem senha, sem formulário de cadastro/remoção).
+// Aba Acesso — login já feito pelo lock gate. A lista é sempre carregada;
+// o painel de adicionar/atualizar/remover usuário (accessAdminPanel) só fica
+// visível para quem logou como "administrador" (window.loggedInRole_), e o
+// botão "Alterar minha senha" fica disponível para qualquer usuário logado.
+// Porte de controle-shm-painel.html (accessSaveBtn/accessRemoveBtn/
+// changePasswordSubmitBtn), adaptado para chamar o backend deste repositório
+// (POST /api/access/upsert|remove|change-password) em vez de MCP direto no
+// browser — nenhuma das 3 rotas foi testada ao vivo nesta sessão.
 // ============================================================================
 let acessoLoaded_ = false;
+let acessoUsersCache_ = [];
 
 window.onActivateAcesso_ = function onActivateAcesso_() {
+  refreshAccessAdminPanelVisibility_();
   if (acessoLoaded_) return;
   acessoLoaded_ = true;
   loadAcessoList_();
+  wireAccessAdminControls_();
+  wireChangePasswordControls_();
 };
+
+function refreshAccessAdminPanelVisibility_() {
+  const panel = document.getElementById('accessAdminPanel');
+  if (panel) panel.hidden = window.loggedInRole_ !== 'administrador';
+}
 
 async function loadAcessoList_() {
   const status = document.getElementById('acessoStatus');
@@ -272,22 +296,228 @@ async function loadAcessoList_() {
       throw new Error((payload && payload.error) || ('Erro ' + res.status));
     }
     const users = (payload && payload.users) || [];
-    if (!users.length) {
-      wrap.innerHTML = '<p class="metrics-empty">Nenhum usuário cadastrado.</p>';
-    } else {
-      const rows = users.map((u) => {
-        const email = escapeHtml_(u.email);
-        const role = u.role === 'administrador' ? 'Administrador' : 'Comum';
-        return '<tr><td>' + email + '</td><td>' + role + '</td></tr>';
-      }).join('');
-      wrap.innerHTML =
-        '<table class="site-table"><thead><tr><th>E-mail</th><th>Papel</th></tr></thead><tbody>' +
-        rows + '</tbody></table>';
-    }
+    acessoUsersCache_ = users;
+    renderAcessoTable_(users, wrap);
     if (status) { status.textContent = 'Atualizado.'; status.className = 'sync-status is-ok'; }
   } catch (e) {
     if (status) { status.textContent = 'Erro ao carregar lista: ' + (e && e.message ? e.message : e); status.className = 'sync-status is-error'; }
     if (wrap) wrap.innerHTML = '';
+  }
+}
+
+function renderAcessoTable_(users, wrap) {
+  if (!wrap) return;
+  if (!users.length) {
+    wrap.innerHTML = '<p class="metrics-empty">Nenhum usuário cadastrado.</p>';
+    return;
+  }
+  const isAdmin = window.loggedInRole_ === 'administrador';
+  const rows = users.map((u) => {
+    const email = escapeHtml_(u.email);
+    const userIsAdmin = u.role === 'administrador';
+    const roleLabel = userIsAdmin ? 'Administrador' : 'Comum';
+    const badgeClass = userIsAdmin ? 'is-admin' : 'is-comum';
+    // Administrador nenhum pode ser removido pela interface — mesma trava
+    // do original (nem mostra rádio pra admin), reforçada de novo no backend.
+    const radioCell = (!isAdmin)
+      ? ''
+      : (userIsAdmin
+        ? '<span title="Administrador — não pode ser removido pela interface">🔒</span>'
+        : '<input type="radio" name="accessSelectRadio" class="access-select-radio" value="' + email + '">');
+    const radioTh = isAdmin ? '<th></th>' : '';
+    return { radioCell, email, roleLabel, badgeClass, radioTh };
+  });
+  const theadRadio = isAdmin ? '<th></th>' : '';
+  const bodyRows = rows.map((r) =>
+    '<tr>' + (isAdmin ? '<td>' + r.radioCell + '</td>' : '') +
+    '<td>' + r.email + '</td>' +
+    '<td><span class="access-role-badge ' + r.badgeClass + '">' + r.roleLabel + '</span></td></tr>'
+  ).join('');
+  wrap.innerHTML =
+    '<table class="site-table"><thead><tr>' + theadRadio + '<th>E-mail</th><th>Papel</th></tr></thead><tbody>' +
+    bodyRows + '</tbody></table>';
+}
+
+let accessAdminControlsWired_ = false;
+
+function wireAccessAdminControls_() {
+  if (accessAdminControlsWired_) return;
+  accessAdminControlsWired_ = true;
+
+  const saveBtn = document.getElementById('accessSaveBtn');
+  const saveStatus = document.getElementById('accessSaveStatus');
+  const emailInput = document.getElementById('accessEmailInput');
+  const roleSelect = document.getElementById('accessRoleSelect');
+  const passwordInput = document.getElementById('accessPasswordInput');
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const email = (emailInput.value || '').trim().toLowerCase();
+      const role = roleSelect.value;
+      const password = (passwordInput && passwordInput.value) || '';
+      if (!email || email.indexOf('@') === -1) {
+        saveStatus.textContent = 'Digite um e-mail válido.';
+        saveStatus.className = 'sync-status is-error';
+        return;
+      }
+      saveBtn.disabled = true;
+      saveStatus.textContent = 'Salvando…';
+      saveStatus.className = 'sync-status';
+      try {
+        const res = await fetch('/api/access/upsert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminEmail: window.loggedInEmail_,
+            adminPassword: pendingAdminPasswordPrompt_(),
+            email, role, password
+          })
+        });
+        const payload = await res.json().catch(() => null);
+        if (res.ok && payload && payload.ok) {
+          saveStatus.textContent = 'Salvo! ' + email + ' agora é ' + (role === 'administrador' ? 'administrador' : 'usuário comum') + '.';
+          saveStatus.className = 'sync-status is-ok';
+          emailInput.value = '';
+          if (passwordInput) passwordInput.value = '';
+          await loadAcessoList_();
+        } else {
+          saveStatus.textContent = (payload && payload.error) || 'Não foi possível salvar.';
+          saveStatus.className = 'sync-status is-error';
+        }
+      } catch (e) {
+        saveStatus.textContent = 'Falha ao chamar o servidor: ' + (e && e.message ? e.message : e);
+        saveStatus.className = 'sync-status is-error';
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  }
+
+  const removeBtn = document.getElementById('accessRemoveBtn');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', async () => {
+      const wrap = document.getElementById('acessoTableWrap');
+      const checked = wrap && wrap.querySelector('.access-select-radio:checked');
+      if (!checked) {
+        saveStatus.textContent = 'Selecione um usuário na lista para remover.';
+        saveStatus.className = 'sync-status is-error';
+        return;
+      }
+      const email = checked.value;
+      removeBtn.disabled = true;
+      saveStatus.textContent = 'Removendo ' + email + '…';
+      saveStatus.className = 'sync-status';
+      try {
+        const res = await fetch('/api/access/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminEmail: window.loggedInEmail_,
+            adminPassword: pendingAdminPasswordPrompt_(),
+            email
+          })
+        });
+        const payload = await res.json().catch(() => null);
+        if (res.ok && payload && payload.ok) {
+          saveStatus.textContent = 'Removido: ' + email + '.';
+          saveStatus.className = 'sync-status is-ok';
+          await loadAcessoList_();
+        } else {
+          saveStatus.textContent = (payload && payload.error) || 'Não foi possível remover.';
+          saveStatus.className = 'sync-status is-error';
+        }
+      } catch (e) {
+        saveStatus.textContent = 'Falha ao chamar o servidor: ' + (e && e.message ? e.message : e);
+        saveStatus.className = 'sync-status is-error';
+      } finally {
+        removeBtn.disabled = false;
+      }
+    });
+  }
+}
+
+// As rotas de escrita de administrador (upsert/remove) exigem reenviar a
+// senha de admin no corpo da requisição a cada chamada (o site não tem
+// sessão de servidor). Em vez de guardar a senha de admin em memória (mais
+// sensível), pedimos de novo com um prompt simples só na hora da ação —
+// mesmo padrão de "reautenticar pra ação sensível" usado em vários sistemas.
+function pendingAdminPasswordPrompt_() {
+  return window.prompt('Confirme sua senha de administrador para continuar:') || '';
+}
+
+// ============================================================================
+// Modal "Alterar minha senha" — disponível para QUALQUER usuário logado (não
+// só administrador), usando o e-mail com que a pessoa entrou na área
+// protegida (window.loggedInEmail_).
+// ============================================================================
+let changePasswordControlsWired_ = false;
+
+function wireChangePasswordControls_() {
+  if (changePasswordControlsWired_) return;
+  changePasswordControlsWired_ = true;
+
+  const openBtn = document.getElementById('openChangePasswordBtn');
+  const overlay = document.getElementById('changePasswordOverlay');
+  const closeBtn = document.getElementById('changePasswordClose');
+  const submitBtn = document.getElementById('changePasswordSubmitBtn');
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      if (!window.loggedInEmail_) {
+        window.openLockGate_('acesso');
+        return;
+      }
+      const status = document.getElementById('changePasswordStatus');
+      const currentInput = document.getElementById('changePasswordCurrentInput');
+      const newInput = document.getElementById('changePasswordNewInput');
+      if (status) { status.textContent = ''; status.className = 'sync-status'; }
+      if (currentInput) currentInput.value = '';
+      if (newInput) newInput.value = '';
+      if (overlay) overlay.hidden = false;
+    });
+  }
+  if (closeBtn) closeBtn.addEventListener('click', () => { if (overlay) overlay.hidden = true; });
+  if (overlay) {
+    overlay.addEventListener('click', (ev) => {
+      if (ev.target === overlay) overlay.hidden = true;
+    });
+  }
+
+  if (submitBtn) {
+    submitBtn.addEventListener('click', async () => {
+      const status = document.getElementById('changePasswordStatus');
+      const currentPassword = document.getElementById('changePasswordCurrentInput').value;
+      const newPassword = document.getElementById('changePasswordNewInput').value;
+      if (!currentPassword || !newPassword) {
+        status.textContent = 'Preencha a senha atual e a nova senha.';
+        status.className = 'sync-status is-error';
+        return;
+      }
+      submitBtn.disabled = true;
+      status.textContent = 'Verificando…';
+      status.className = 'sync-status';
+      try {
+        const res = await fetch('/api/access/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: window.loggedInEmail_, currentPassword, newPassword })
+        });
+        const payload = await res.json().catch(() => null);
+        if (res.ok && payload && payload.ok) {
+          status.textContent = 'Senha alterada com sucesso.';
+          status.className = 'sync-status is-ok';
+          setTimeout(() => { if (overlay) overlay.hidden = true; }, 1200);
+        } else {
+          status.textContent = (payload && payload.error) || 'Não foi possível alterar a senha.';
+          status.className = 'sync-status is-error';
+        }
+      } catch (e) {
+        status.textContent = 'Falha ao chamar o servidor: ' + (e && e.message ? e.message : e);
+        status.className = 'sync-status is-error';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
   }
 }
 

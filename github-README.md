@@ -83,6 +83,8 @@ Se você já tem um repositório GitHub existente apontando para esta pasta, bas
 
 As abas **Board Jira** e **Métricas** funcionam normalmente sem essa variável. Sem `NOTION_TOKEN` configurado, só as abas **Utilidades** e **Acesso** ficam indisponíveis — ao tentar fazer login (o modal de senha que abre ao clicar em qualquer uma delas), o servidor responde com erro claro: `NOTION_TOKEN não configurado nas variáveis de ambiente do servidor.`
 
+**Importante**: a aba Acesso agora GRAVA na página de Acessos (adicionar/atualizar/remover usuário, trocar senha), não só lê. Ao criar a integração no passo 1 abaixo, confirme nas permissões da integração (seção **Capabilities** em notion.so/my-integrations) que **"Insert content"** e **"Update content"** estão marcadas, além da leitura padrão — sem isso, as rotas `POST /api/access/upsert`, `POST /api/access/remove` e `POST /api/access/change-password` falham com 403 mesmo com o token certo e a página compartilhada.
+
 Para habilitar essas duas abas:
 
 1. Acesse [notion.so/my-integrations](https://www.notion.so/my-integrations) e crie uma **nova integração interna** (pode ser um token dedicado a este site, separado de qualquer integração já usada em outro script/Apps Script deste projeto).
@@ -96,6 +98,9 @@ Para habilitar essas duas abas:
 - Se a tabela de acessos é encontrada de primeira pela busca recursiva de blocos (`findFirstTable_` em `github-server.js`), ou se está aninhada em algum bloco (toggle, coluna etc.) que precise de ajuste.
 - Se a ordem das colunas da tabela bate com o esperado: **Usuário (e-mail) | Tipo de Acesso | Senha | Visualiza | Quantidade de acessos totais** (só as 3 primeiras são lidas).
 - Se o endpoint `POST /api/access/login` reconhece corretamente e-mails/senhas reais cadastrados na tabela.
+- Se `archived: true` num bloco `table_row` (usado por `POST /api/access/remove`, função `archiveAccessRow_` em `github-server.js`) realmente remove a linha da visualização da tabela — é o padrão documentado da API do Notion para deletar qualquer bloco, mas nunca testado contra esta tabela específica.
+- Se o `PATCH /v1/blocks/{id}` de `POST /api/access/upsert`/`change-password` (função `updateAccessRow_`) aceita reenviar as 5 cells na mesma ordem de leitura (Usuário | Tipo de Acesso | Senha | Visualiza | Quantidade de acessos totais) sem precisar de nenhum campo adicional.
+- Se `POST /api/access/upsert` com um e-mail novo (função `createAccessRow_`, `POST /v1/blocks/{tableId}/children`) insere a linha corretamente no fim da tabela.
 
 ## 3.2 Export Snap Notion (card em Utilidades)
 
