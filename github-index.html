@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Controle SHM — Painel Público</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/github-style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="topbar">
+    <span class="topbar-title">Controle SHM</span>
+    <nav class="topbar-nav">
+      <button class="topbar-nav-item" type="button" data-section="site" aria-current="page">Board Jira</button>
+      <button class="topbar-nav-item" type="button" data-section="metrics">Métricas</button>
+    </nav>
+    <button class="sync-btn" type="button" id="refreshBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="refreshIcon"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>
+      <span id="refreshLabel">Atualizar</span>
+    </button>
+  </div>
+
+  <main class="app-main">
+
+    <section class="app-section" id="section-site">
+      <div class="wrap wrap-wide">
+        <header class="site-header">
+          <div>
+            <h1>Board Jira</h1>
+            <p class="subtitle">Um bloco por status, direto do Jira (projeto SHMB). Somente leitura.</p>
+          </div>
+        </header>
+        <div class="sync-status" id="syncStatus">Carregando…</div>
+        <div class="kanban-board" id="siteKanban">
+          <div class="kanban-empty">Carregando cards do Jira…</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="app-section" id="section-metrics" hidden>
+      <div class="wrap wrap-wide">
+        <header class="site-header">
+          <div>
+            <h1>Métricas</h1>
+            <p class="subtitle">Mesma sincronização do Board Jira — atualiza as duas telas juntas.</p>
+          </div>
+        </header>
+
+        <div class="stat-grid" id="metricsStats">
+          <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">Frentes (Epics)</span></div>
+          <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">Total de Stories</span></div>
+          <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">Concluídas</span><span class="stat-desc">nos últimos 60 dias</span></div>
+        </div>
+
+        <div class="metrics-card viz-root">
+          <h2>Distribuição por frente (Epic)</h2>
+          <div id="metricsEpicPie">
+            <p class="metrics-empty">Carregando dados do Jira…</p>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>Distribuição por Frente (Épico, Itens e Subtarefas)</h2>
+          <div class="site-table-wrap" id="metricsEpicChildrenTable">
+            <p class="metrics-empty">Carregando dados do Jira…</p>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>Itens por status, agrupados por frente (Epic)</h2>
+          <div class="epic-group-list" id="metricsStatusBars">
+            <p class="metrics-empty">Carregando dados do Jira…</p>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>⏳ Itens sinalizados (bloqueados) em aberto</h2>
+          <div class="flagged-list" id="metricsFlaggedItems">
+            <p class="metrics-empty">Carregando dados do Jira…</p>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>Itens criados versus itens terminados ao longo dos meses</h2>
+          <div id="metricsCreatedVsDoneChart">
+            <p class="metrics-empty">Carregando dados do Jira…</p>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>Distribuição por Frente (Itens Cancelados) <span class="metrics-count-badge" id="metricsCancelledCount">–</span></h2>
+          <div class="site-table-wrap" id="metricsCancelledTable">
+            <p class="metrics-empty">Carregando dados do Jira…</p>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>Itens por responsável</h2>
+          <div class="assignee-split-grid">
+            <div class="assignee-split-col">
+              <h3 class="assignee-split-title">Para fazer <span class="assignee-split-desc">(Backlog + Aprovado Comprometido)</span></h3>
+              <div class="bar-list" id="metricsAssigneeToDoBars">
+                <p class="metrics-empty">Carregando dados do Jira…</p>
+              </div>
+            </div>
+            <div class="assignee-split-col">
+              <h3 class="assignee-split-title">Em andamento <span class="assignee-split-desc">(Fazendo + Teste Validação)</span></h3>
+              <div class="bar-list" id="metricsAssigneeOpenBars">
+                <p class="metrics-empty">Carregando dados do Jira…</p>
+              </div>
+            </div>
+            <div class="assignee-split-col">
+              <h3 class="assignee-split-title">Finalizados <span class="assignee-split-desc">(últimos 60 dias)</span></h3>
+              <div class="bar-list" id="metricsAssigneeDoneBars">
+                <p class="metrics-empty">Carregando dados do Jira…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <p class="footer-note">Dados em tempo real do Jira (cache de até 60s) — painel somente leitura.</p>
+</div>
+
+<script src="/github-app.js"></script>
+</body>
+</html>

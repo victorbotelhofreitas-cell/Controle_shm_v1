@@ -1,0 +1,16 @@
+{
+  "name": "controle-shm-public-dashboard",
+  "version": "1.0.0",
+  "description": "Painel público (somente leitura) do Board Jira e Métricas do projeto SHMB, com dados ao vivo via API REST do Jira.",
+  "private": true,
+  "main": "github-server.js",
+  "scripts": {
+    "start": "node github-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
