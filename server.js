@@ -1133,6 +1133,15 @@ app.post('/api/sync-gravacoes', async (req, res) => {
 // Só a pasta public/ é exposta — nunca o servidor nem o resto do repo.
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Na Vercel (preset Express) o "/" chega aqui no servidor, não na CDN:
+// entrega a página e, se o arquivo não estiver no pacote da função, manda
+// para /index.html, que a CDN serve.
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
+    if (err && !res.headersSent) res.redirect(302, '/index.html');
+  });
+});
+
 module.exports = app;
 
 const PORT = process.env.PORT || 3000;
