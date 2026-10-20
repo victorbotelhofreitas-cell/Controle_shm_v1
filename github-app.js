@@ -481,6 +481,51 @@ function wrapAxisLabel_(text, maxCharsPerLine) {
 // ============================================================================
 // Board Jira (Kanban)
 // ============================================================================
+// Legenda das frentes no topo do Board: cor de cada épico (a mesma da borda
+// dos cards), chave + nome e quantos itens a frente tem no board.
+function buildEpicLegend_(epics, epicColors, stories) {
+  const countByEpic = {};
+  stories.forEach((s) => {
+    const k = s.fields.parent ? s.fields.parent.key : '(sem frente)';
+    countByEpic[k] = (countByEpic[k] || 0) + 1;
+  });
+
+  const box = document.createElement('div');
+  box.className = 'board-epic-legend';
+  const title = document.createElement('span');
+  title.className = 'board-epic-legend-title';
+  title.textContent = 'Frentes (épicos)';
+  box.appendChild(title);
+
+  const list = document.createElement('div');
+  list.className = 'board-epic-legend-list';
+  Object.keys(epics)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .forEach((key) => {
+      const chip = document.createElement('div');
+      chip.className = 'board-epic-chip';
+      chip.style.setProperty('--epic-color', epicColors[key] || 'var(--border)');
+      const dot = document.createElement('span');
+      dot.className = 'board-epic-dot';
+      chip.appendChild(dot);
+      const link = linkCell_(JIRA_LINK_(key), key);
+      link.className = 'board-epic-key';
+      chip.appendChild(link);
+      const name = document.createElement('span');
+      name.className = 'board-epic-name';
+      name.textContent = epics[key].summary;
+      chip.appendChild(name);
+      const count = document.createElement('span');
+      count.className = 'board-epic-count';
+      const n = countByEpic[key] || 0;
+      count.textContent = n + (n === 1 ? ' item' : ' itens');
+      chip.appendChild(count);
+      list.appendChild(chip);
+    });
+  box.appendChild(list);
+  return box;
+}
+
 // Subtarefas de um item no Board: lista recolhível logo abaixo do card. A
 // subtarefa concluída ganha a borda verde do Done, mas continua aqui, no
 // status do item; só o item concluído vai para a coluna Done.
@@ -590,6 +635,8 @@ function renderSiteBoard_(issues) {
   }
 
   const epicColors = buildEpicColorMap_(epics);
+
+  siteKanban.appendChild(buildEpicLegend_(epics, epicColors, stories));
 
   const byStatus = {};
   stories.forEach((issue) => {

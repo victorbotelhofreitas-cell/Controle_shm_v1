@@ -1084,3 +1084,32 @@ body.is-presenting .app-main { padding: 28px 24px; }
 .kanban-card.is-subtask .subtask-tag-cell { color: var(--text-muted); font-style: italic; }
 .kanban-card.is-subtask.is-done { border-color: #34a853; border-left-color: #34a853; background: rgba(52, 168, 83, 0.06); }
 .kanban-card.is-subtask.is-cancelled { opacity: 0.55; text-decoration: line-through; }
+/* --- Legenda das frentes no topo do Board Jira --- */
+.board-epic-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+.board-epic-legend-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.board-epic-legend-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.board-epic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--epic-color);
+  font-size: 12.5px;
+}
+.board-epic-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--epic-color); flex-shrink: 0; }
+.board-epic-key { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; color: var(--link-color); text-decoration: none; }
+.board-epic-key:hover { text-decoration: underline; }
+.board-epic-name { font-weight: 600; color: var(--text); }
+.board-epic-count { font-size: 11px; color: var(--text-muted); padding-left: 6px; border-left: 1px solid var(--border); }
