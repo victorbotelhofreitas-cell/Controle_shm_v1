@@ -761,7 +761,8 @@ function renderMetrics_(issues) {
 
   renderFlaggedOpenItems_(document.getElementById('metricsFlaggedItems'), stories, epics);
 
-  renderCreatedVsDoneChart_(document.getElementById('metricsCreatedVsDoneChart'), stories, epics, buildEpicColorMap_(epics));
+  const allSubtasks = Object.keys(subtasksByParentKey).reduce((list, k) => list.concat(subtasksByParentKey[k]), []);
+  renderCreatedVsDoneChart_(document.getElementById('metricsCreatedVsDoneChart'), stories, epics, buildEpicColorMap_(epics), allSubtasks);
 }
 
 function setStatTiles_(values) {
@@ -1015,7 +1016,10 @@ function renderStatusByEpicGroupedChart_(container, stories, epics, epicColors) 
   container.appendChild(wrap);
 }
 
-function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
+// Acima do zero: Criados (C) e Terminados (T) por mês, empilhados por frente.
+// Abaixo do zero, embaixo da coluna T: subtarefas terminadas no mês, na
+// frente da história-mãe, na mesma escala do eixo positivo.
+function renderCreatedVsDoneChart_(container, stories, epics, epicColors, subtasks) {
   container.innerHTML = '';
 
   if (!stories || stories.length === 0) {
@@ -1074,8 +1078,44 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
     }
   });
 
+  // Subtarefas (eixo negativo), na frente da história-mãe: criadas no mês
+  // (embaixo do C) e terminadas no mês (embaixo do T).
+  const storyEpicByKey = {};
+  stories.forEach((s) => { storyEpicByKey[s.key] = s.fields.parent ? s.fields.parent.key : '(sem frente)'; });
+  const subCreatedByMonthEpic = {};
+  const subCreatedIssuesByMonthEpic = {};
+  const subDoneByMonthEpic = {};
+  const subDoneIssuesByMonthEpic = {};
+  months.forEach((mo) => {
+    const k = monthKey_(mo.year, mo.month);
+    subCreatedByMonthEpic[k] = {};
+    subCreatedIssuesByMonthEpic[k] = {};
+    subDoneByMonthEpic[k] = {};
+    subDoneIssuesByMonthEpic[k] = {};
+  });
+  const addSub_ = (byMonthEpic, issuesByMonthEpic, date, sub) => {
+    const mk = monthKey_(date.getFullYear(), date.getMonth());
+    if (!byMonthEpic.hasOwnProperty(mk)) return;
+    const parentKey = sub.fields.parent ? sub.fields.parent.key : null;
+    const epicKey = (parentKey && storyEpicByKey[parentKey]) || '(sem frente)';
+    if (epicKeys.indexOf(epicKey) === -1) epicKeys.push(epicKey);
+    byMonthEpic[mk][epicKey] = (byMonthEpic[mk][epicKey] || 0) + 1;
+    if (!issuesByMonthEpic[mk][epicKey]) issuesByMonthEpic[mk][epicKey] = [];
+    issuesByMonthEpic[mk][epicKey].push(sub);
+  };
+  (subtasks || []).forEach((sub) => {
+    const createdDate = parseJiraDate_(sub.fields.created);
+    if (createdDate) addSub_(subCreatedByMonthEpic, subCreatedIssuesByMonthEpic, createdDate, sub);
+    const doneDate = deliveryDate_(sub.fields);
+    if (doneDate) addSub_(subDoneByMonthEpic, subDoneIssuesByMonthEpic, doneDate, sub);
+  });
+
   const monthTotal_ = (byMonthEpic, k) => Object.values(byMonthEpic[k]).reduce((sum, n) => sum + n, 0);
-  const maxCount = Math.max(1, ...months.map((mo) => {
+  const maxSubCount = Math.max(0, ...months.map((mo) => {
+    const k = monthKey_(mo.year, mo.month);
+    return Math.max(monthTotal_(subCreatedByMonthEpic, k), monthTotal_(subDoneByMonthEpic, k));
+  }));
+  const maxCount = Math.max(1, maxSubCount, ...months.map((mo) => {
     const k = monthKey_(mo.year, mo.month);
     return Math.max(monthTotal_(createdByMonthEpic, k), monthTotal_(doneByMonthEpic, k));
   }));
@@ -1088,19 +1128,25 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
   const topPadding = 8;
   const axisLabelHeight = 30;
 
+  // Área abaixo do zero: mesma escala do eixo positivo + respiro pro total.
+  const zeroY = topPadding + chartHeight;
+  const negChartHeight = maxSubCount > 0 ? (maxSubCount / maxCount) * chartHeight : 0;
+  const negAreaHeight = negChartHeight > 0 ? negChartHeight + 14 : 0;
+  const labelsTop = zeroY + negAreaHeight;
+
   const barsWidth = 2 * barWidth + barGap;
   const CHAR_WIDTH_ESTIMATE = 6;
   const groupWidths = months.map((mo) => Math.max(barsWidth, mo.label.length * CHAR_WIDTH_ESTIMATE));
 
   const width = leftAxisWidth + groupWidths.reduce((sum, w) => sum + w, 0) + (months.length - 1) * groupGap + 12;
-  const height = topPadding + chartHeight + axisLabelHeight;
+  const height = labelsTop + axisLabelHeight;
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', height);
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Itens criados versus itens terminados ao longo dos meses, por frente');
+  svg.setAttribute('aria-label', 'Itens criados x terminados por mês e por frente, com as subtarefas terminadas abaixo do zero');
   svg.style.maxWidth = (width * 1.4) + 'px';
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -1140,6 +1186,34 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
     svg.appendChild(label);
   });
 
+  // Eixo negativo: linha de base mais forte no zero + marca do maior valor.
+  if (negChartHeight > 0) {
+    const baseline = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    baseline.setAttribute('x1', leftAxisWidth);
+    baseline.setAttribute('x2', width - 4);
+    baseline.setAttribute('y1', zeroY);
+    baseline.setAttribute('y2', zeroY);
+    baseline.setAttribute('stroke', 'var(--viz-baseline)');
+    baseline.setAttribute('stroke-width', 1);
+    svg.appendChild(baseline);
+
+    const negLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    negLine.setAttribute('x1', leftAxisWidth);
+    negLine.setAttribute('x2', width - 4);
+    negLine.setAttribute('y1', zeroY + negChartHeight);
+    negLine.setAttribute('y2', zeroY + negChartHeight);
+    negLine.setAttribute('class', 'viz-gridline');
+    svg.appendChild(negLine);
+
+    const negLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    negLabel.setAttribute('x', leftAxisWidth - 4);
+    negLabel.setAttribute('y', zeroY + negChartHeight + 3);
+    negLabel.setAttribute('text-anchor', 'end');
+    negLabel.setAttribute('class', 'viz-axis-label');
+    negLabel.textContent = '−' + maxSubCount;
+    svg.appendChild(negLabel);
+  }
+
   let groupXCursor = leftAxisWidth;
   months.forEach((mo, mi) => {
     const groupWidth = groupWidths[mi];
@@ -1148,6 +1222,85 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
     const barsStartX = groupX + (groupWidth - barsWidth) / 2;
 
     const k = monthKey_(mo.year, mo.month);
+
+    // Barras de subtarefas, para baixo: criadas sob o C, terminadas sob o T.
+    [
+      { byEpic: subCreatedByMonthEpic[k], issuesByEpic: subCreatedIssuesByMonthEpic[k], label: 'Subtarefas criadas', hatched: false },
+      { byEpic: subDoneByMonthEpic[k], issuesByEpic: subDoneIssuesByMonthEpic[k], label: 'Subtarefas terminadas', hatched: true }
+    ].forEach((subSeries, si) => {
+    const subTotal = Object.values(subSeries.byEpic).reduce((sum, n) => sum + n, 0);
+    if (subTotal > 0) {
+      const subX = barsStartX + si * (barWidth + barGap);
+      const subBarHeight = (subTotal / maxCount) * chartHeight;
+      let subCursor = zeroY;
+      epicKeys.forEach((epicKey) => {
+        const count = subSeries.byEpic[epicKey] || 0;
+        if (count <= 0) return;
+        const segHeight = (count / subTotal) * subBarHeight;
+        const segY = subCursor;
+        subCursor += segHeight;
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', subX);
+        rect.setAttribute('y', segY);
+        rect.setAttribute('width', barWidth);
+        rect.setAttribute('height', Math.max(0, segHeight));
+        rect.setAttribute('fill', epicColors[epicKey] || 'var(--border)');
+        rect.setAttribute('opacity', '0.8');
+        const epicLabel = epics[epicKey] ? epicKey + ' ' + epics[epicKey].summary : epicKey;
+        const issueLines = (subSeries.issuesByEpic[epicKey] || [])
+          .slice()
+          .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }))
+          .map((it) => it.key + ' — ' + it.fields.summary);
+        attachVizTooltip_(rect, mo.label + ' — ' + subSeries.label + ' — ' + epicLabel + ': ' + count +
+          (issueLines.length ? '\n' + issueLines.join('\n') : ''));
+        svg.appendChild(rect);
+
+        if (subSeries.hatched) {
+          const hatchRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          hatchRect.setAttribute('x', subX);
+          hatchRect.setAttribute('y', segY);
+          hatchRect.setAttribute('width', barWidth);
+          hatchRect.setAttribute('height', Math.max(0, segHeight));
+          hatchRect.setAttribute('fill', 'url(#doneHatchPattern)');
+          hatchRect.setAttribute('pointer-events', 'none');
+          svg.appendChild(hatchRect);
+        }
+
+        if (segHeight >= 13) {
+          const segLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          segLabel.setAttribute('x', subX + barWidth / 2);
+          segLabel.setAttribute('y', segY + segHeight / 2 + 3);
+          segLabel.setAttribute('text-anchor', 'middle');
+          segLabel.setAttribute('fill', '#ffffff');
+          segLabel.setAttribute('font-size', '9');
+          segLabel.setAttribute('font-weight', '700');
+          segLabel.setAttribute('pointer-events', 'none');
+          segLabel.textContent = count;
+          svg.appendChild(segLabel);
+        }
+      });
+
+      const subOutline = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      subOutline.setAttribute('x', subX);
+      subOutline.setAttribute('y', zeroY);
+      subOutline.setAttribute('width', barWidth);
+      subOutline.setAttribute('height', Math.max(0, subBarHeight));
+      subOutline.setAttribute('rx', 2);
+      subOutline.setAttribute('fill', 'none');
+      subOutline.setAttribute('class', 'viz-stack-outline');
+      svg.appendChild(subOutline);
+
+      const subTotalLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      subTotalLabel.setAttribute('x', subX + barWidth / 2);
+      subTotalLabel.setAttribute('y', zeroY + subBarHeight + 10);
+      subTotalLabel.setAttribute('text-anchor', 'middle');
+      subTotalLabel.setAttribute('class', 'viz-axis-label');
+      subTotalLabel.textContent = subTotal;
+      svg.appendChild(subTotalLabel);
+    }
+    });
+
     [
       { byEpic: createdByMonthEpic[k], issuesByEpic: createdIssuesByMonthEpic[k], label: 'Criados', shortLabel: 'C' },
       { byEpic: doneByMonthEpic[k], issuesByEpic: doneIssuesByMonthEpic[k], label: 'Terminados', shortLabel: 'T' }
@@ -1234,7 +1387,7 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
 
       const shortLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       shortLabel.setAttribute('x', x + barWidth / 2);
-      shortLabel.setAttribute('y', topPadding + chartHeight + 12);
+      shortLabel.setAttribute('y', labelsTop + 12);
       shortLabel.setAttribute('text-anchor', 'middle');
       shortLabel.setAttribute('class', 'viz-axis-label');
       shortLabel.textContent = series.shortLabel;
@@ -1243,7 +1396,7 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
 
     const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     label.setAttribute('x', groupX + groupWidth / 2);
-    label.setAttribute('y', topPadding + chartHeight + 26);
+    label.setAttribute('y', labelsTop + 26);
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('class', 'viz-axis-label');
     label.textContent = mo.label;
@@ -1258,7 +1411,8 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors) {
   patternLegend.className = 'viz-legend';
   [
     { label: 'Criados (C) — cor sólida', hatched: false },
-    { label: 'Terminados (T) — cor rachurada', hatched: true }
+    { label: 'Terminados (T) — cor rachurada', hatched: true },
+    { label: 'Acima do zero: itens · abaixo do zero: subtarefas', hatched: false }
   ].forEach((entry) => {
     const item = document.createElement('div');
     item.className = 'viz-legend-item';
