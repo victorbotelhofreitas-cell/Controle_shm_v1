@@ -2094,11 +2094,12 @@ function groupDeliveries_(monthDeliveries) {
   return groups;
 }
 
-// Pódio do mês: top 5 por número de entregas (história ou subtarefa
-// concluída conta 1). Empate desempata pelo nome, para a ordem ser estável.
-function buildPodium_(monthDeliveries) {
+// Pódio do mês: top 5 por número de entregas da lista recebida (só
+// histórias ou só subtarefas). Empate desempata pelo nome, para a ordem ser
+// estável.
+function buildPodium_(deliveriesList, title, emptyText) {
   const counts = {};
-  monthDeliveries.forEach((d) => {
+  deliveriesList.forEach((d) => {
     const f = (d.subtask || d.story).fields;
     const name = f.assignee ? f.assignee.displayName : 'Sem responsável';
     counts[name] = (counts[name] || 0) + 1;
@@ -2109,7 +2110,11 @@ function buildPodium_(monthDeliveries) {
     .slice(0, 5);
 
   const section = el_('div', 'delivery-podium');
-  section.appendChild(el_('span', 'delivery-podium-title', 'Pódio do mês · quem mais entregou'));
+  section.appendChild(el_('span', 'delivery-podium-title', title));
+  if (ranking.length === 0) {
+    section.appendChild(el_('span', 'delivery-podium-empty', emptyText));
+    return section;
+  }
 
   // 5 degraus, 1º no centro e descendo para as pontas: 4º, 2º, 1º, 3º, 5º.
   // Posição sem ninguém continua desenhada, vazia, sinalizando que o time
@@ -2118,10 +2123,17 @@ function buildPodium_(monthDeliveries) {
   [3, 1, 0, 2, 4].forEach((idx) => {
     const entry = ranking[idx];
     const step = el_('div', 'podium-step podium-place-' + (idx + 1) + (entry ? '' : ' is-vacant'));
-    step.appendChild(el_('span', 'podium-medal', ['🥇', '🥈', '🥉', '🏅', '🏅'][idx]));
+    // 1º a 3º: medalhas 🥇🥈🥉; 4º e 5º: medalha desenhada com o número dentro.
+    if (idx < 3) step.appendChild(el_('span', 'podium-medal', ['🥇', '🥈', '🥉'][idx]));
+    else step.appendChild(el_('span', 'podium-medal podium-medal-num', String(idx + 1)));
     step.appendChild(el_('span', 'podium-name', entry ? entry.name : 'Posição em aberto'));
-    step.appendChild(el_('span', 'podium-count', entry ? plural_(entry.count, 'entrega', 'entregas') : 'time em formação'));
-    step.appendChild(el_('div', 'podium-block', String(idx + 1) + 'º'));
+    if (!entry) step.appendChild(el_('span', 'podium-count', 'time em formação'));
+    // O degrau mostra a quantidade de itens entregues, não a posição.
+    const count = entry ? entry.count : 0;
+    const block = el_('div', 'podium-block');
+    block.appendChild(el_('span', 'podium-block-value', String(count)));
+    block.appendChild(el_('span', 'podium-block-label', count === 1 ? 'entrega' : 'entregas'));
+    step.appendChild(block);
     stage.appendChild(step);
   });
   section.appendChild(stage);
@@ -2225,7 +2237,13 @@ function renderDeliveries_(issues) {
     frame.appendChild(rows);
   }
 
-  if (monthDeliveries.length > 0) frame.appendChild(buildPodium_(monthDeliveries));
+  // Dois pódios: um só de histórias (itens de trabalho), outro só de subtarefas.
+  if (monthDeliveries.length > 0) {
+    frame.appendChild(buildPodium_(monthDeliveries.filter((d) => !d.subtask),
+      'Quantidade de entregas do mês - Histórias (itens de trabalho)', 'Nenhuma história concluída neste mês.'));
+    frame.appendChild(buildPodium_(monthDeliveries.filter((d) => d.subtask),
+      'Quantidade de entregas do mês - Subtarefas', 'Nenhuma subtarefa concluída neste mês.'));
+  }
 
   const foot = el_('div', 'delivery-foot');
   const syncText = lastSyncAt_

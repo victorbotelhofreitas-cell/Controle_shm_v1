@@ -978,6 +978,29 @@ a.dcard-key:hover { text-decoration: underline; }
 .podium-place-5 .podium-block { height: 34px; padding-top: 6px; }
 .podium-place-4 .podium-medal,
 .podium-place-5 .podium-medal { font-size: 24px; }
+.delivery-podium-empty { font-size: 13px; font-style: italic; color: var(--d-muted); padding: 8px 0 4px; }
+
+/* Degrau: quantidade de itens no lugar da posição */
+.podium-block { flex-direction: column; align-items: center; gap: 0; line-height: 1; }
+.podium-block-value { font-size: inherit; font-weight: 700; }
+.podium-block-label { margin-top: 4px; font-size: 9px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+.podium-place-5 .podium-block-label { display: none; }
+
+/* Medalha do 4º e 5º: círculo com o número dentro */
+.podium-medal-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 13px !important;
+  font-weight: 800;
+  color: #ffffff;
+  background: radial-gradient(circle at 35% 30%, #9fb0cc 0%, #5d6f8f 60%, #44546f 100%);
+  border: 2px solid #c9d2e0;
+  box-shadow: 0 2px 4px rgba(22, 35, 59, 0.25);
+}
 
 /* Degrau sem colaborador: contorno tracejado, sem preenchimento */
 .podium-step.is-vacant .podium-medal { filter: grayscale(1); opacity: 0.35; }
