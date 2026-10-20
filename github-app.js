@@ -481,16 +481,99 @@ function wrapAxisLabel_(text, maxCharsPerLine) {
 // ============================================================================
 // Board Jira (Kanban)
 // ============================================================================
+// Subtarefas de um item no Board: lista recolhível logo abaixo do card. A
+// subtarefa concluída ganha a borda verde do Done, mas continua aqui, no
+// status do item; só o item concluído vai para a coluna Done.
+function buildSubtaskBlock_(subs, epicColor) {
+  const doneCount = subs.filter((s) => isDoneStatusWeb_(s.fields) && !isCancelStatusWeb_(s.fields)).length;
+  const block = document.createElement('div');
+  block.className = 'kanban-subtasks-block';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'kanban-subtasks-toggle';
+  toggle.setAttribute('aria-expanded', 'false');
+  const chevron = document.createElement('span');
+  chevron.className = 'kanban-chevron';
+  chevron.textContent = '▾';
+  toggle.appendChild(chevron);
+  toggle.appendChild(document.createTextNode(
+    subs.length + (subs.length === 1 ? ' subtarefa' : ' subtarefas') +
+    (doneCount ? ' · ' + doneCount + (doneCount === 1 ? ' concluída' : ' concluídas') : '')
+  ));
+
+  const list = document.createElement('div');
+  list.className = 'kanban-subtasks';
+  list.hidden = true;
+  subs.forEach((sub) => list.appendChild(buildSubtaskRow_(sub, epicColor)));
+
+  toggle.addEventListener('click', () => {
+    const willShow = list.hidden;
+    list.hidden = !willShow;
+    toggle.setAttribute('aria-expanded', String(willShow));
+  });
+
+  block.appendChild(toggle);
+  block.appendChild(list);
+  return block;
+}
+
+// Mesmas 11 colunas do card do item, para a subtarefa ficar alinhada.
+function buildSubtaskRow_(sub, epicColor) {
+  const f = sub.fields;
+  const isCancel = isCancelStatusWeb_(f);
+  const isDone = isDoneStatusWeb_(f) && !isCancel;
+  const row = document.createElement('div');
+  row.className = 'kanban-card kanban-row-grid is-subtask' + (isDone ? ' is-done' : '') + (isCancel ? ' is-cancelled' : '');
+  row.style.setProperty('--epic-color', epicColor || 'var(--border)');
+
+  const cell = (content, extraClass) => {
+    const c = document.createElement('div');
+    c.className = 'kanban-card-cell truncate-cell' + (extraClass ? ' ' + extraClass : '');
+    if (content instanceof Node) c.appendChild(content);
+    else { c.textContent = content; c.title = content; }
+    return c;
+  };
+
+  const priorityName = f.priority ? f.priority.name : '';
+  const referenceIso = doneReferenceDateIso_(f);
+  const cltDays = customLeadTimeDays_(f.created, referenceIso);
+  const startDateIso = jiraCustomFieldText_(f.customFields && f.customFields['Start date']);
+  const ltDays = leadTimeDays_(startDateIso, referenceIso);
+
+  row.appendChild(cell(formatDateWeb_(f.created)));
+  row.appendChild(cell('↳ Subtarefa', 'subtask-tag-cell'));
+  const keyCell = cell(linkCell_(JIRA_LINK_(sub.key), sub.key + (isDone ? ' ✓' : '')), 'key-cell');
+  keyCell.title = sub.key + (isDone ? ' (concluída)' : '');
+  row.appendChild(keyCell);
+  row.appendChild(cell(f.summary));
+  row.appendChild(cell(f.status.name));
+  const priorityCell = document.createElement('div');
+  priorityCell.className = 'kanban-card-cell priority-cell' + (isHighPriority_(priorityName) ? ' is-high-priority' : '');
+  priorityCell.title = priorityName || '-';
+  priorityCell.textContent = priorityIcon_(priorityName);
+  row.appendChild(priorityCell);
+  row.appendChild(cell(jiraCustomFieldText_(f.customFields && f.customFields['Plano de Ação']) || '-'));
+  row.appendChild(cell(f.assignee ? f.assignee.displayName : '-'));
+  row.appendChild(cell(jiraCustomFieldText_(f.customFields && f.customFields['Risco Impacto']) || '-'));
+  row.appendChild(cell(cltDays === null ? '-' : cltDays + 'd'));
+  row.appendChild(cell(ltDays === null ? '-' : ltDays + 'd'));
+  return row;
+}
+
 function renderSiteBoard_(issues) {
   const epics = {};
   const stories = [];
+  const subtasksByParentKey = {};
 
   issues.forEach((issue) => {
     const f = issue.fields;
     if (f.issuetype.name === 'Epic') {
       epics[issue.key] = { key: issue.key, summary: f.summary, colorName: jiraEpicColorName_(f), assignee: f.assignee ? f.assignee.displayName : null };
     } else if (isSubtaskIssue_(f)) {
-      // Subtarefas não viram card próprio no board.
+      // Subtarefa não vira card próprio: aparece recolhível embaixo do item.
+      const parentKey = f.parent ? f.parent.key : null;
+      if (parentKey) (subtasksByParentKey[parentKey] = subtasksByParentKey[parentKey] || []).push(issue);
     } else {
       stories.push(issue);
     }
@@ -670,7 +753,18 @@ function renderSiteBoard_(issues) {
           (flagged ? '\nBloqueado (flag)' : '');
         card.appendChild(ltCell);
 
-        cardsGrid.appendChild(card);
+        const subs = (subtasksByParentKey[issue.key] || [])
+          .slice()
+          .sort((a, b) => new Date(a.fields.created) - new Date(b.fields.created));
+        if (subs.length === 0) {
+          cardsGrid.appendChild(card);
+          return;
+        }
+        const itemWrap = document.createElement('div');
+        itemWrap.className = 'kanban-item';
+        itemWrap.appendChild(card);
+        itemWrap.appendChild(buildSubtaskBlock_(subs, epicColors[epic.key]));
+        cardsGrid.appendChild(itemWrap);
       });
 
     siteKanban.appendChild(col);
