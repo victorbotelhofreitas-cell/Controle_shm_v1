@@ -16,6 +16,7 @@
     <nav class="topbar-nav">
       <button class="topbar-nav-item" type="button" data-section="site" aria-current="page">Board Jira</button>
       <button class="topbar-nav-item" type="button" data-section="metrics">Métricas</button>
+      <button class="topbar-nav-item" type="button" data-section="entregas">Entregas</button>
       <button class="topbar-nav-item" type="button" data-section="utilidades" id="navUtilidadesBtn">Utilidades <span class="nav-lock-badge" id="navUtilidadesLockBadge">🔒</span></button>
       <button class="topbar-nav-item" type="button" data-section="acesso" id="navAcessoBtn">Acesso <span class="nav-lock-badge" id="navAcessoLockBadge">🔒</span></button>
     </nav>
@@ -123,6 +124,27 @@
           </div>
         </div>
 
+      </div>
+    </section>
+
+    <section class="app-section" id="section-entregas" hidden>
+      <div class="wrap wrap-wide">
+        <header class="site-header deliveries-header">
+          <div>
+            <h1>Entregas</h1>
+            <p class="subtitle">Histórias e subtarefas concluídas no mês, prontas para print e slide da cadência com a diretoria.</p>
+          </div>
+        </header>
+        <div class="deliveries-toolbar">
+          <nav class="deliveries-months" id="deliveriesMonths" aria-label="Meses"></nav>
+          <button class="sync-btn export-btn" type="button" id="deliveriesPresentBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>
+            <span>Modo apresentação</span>
+          </button>
+        </div>
+        <div id="deliveriesBoard">
+          <div class="kanban-empty">Carregando entregas do Jira…</div>
+        </div>
       </div>
     </section>
 
@@ -277,6 +299,8 @@
 
   <p class="footer-note">Dados em tempo real do Jira (cache de até 60s) — painel somente leitura.</p>
 </div>
+
+<button class="present-exit-btn" type="button" id="presentExitBtn" hidden>Sair do modo apresentação (Esc)</button>
 
 <div class="comments-modal-overlay" id="lockGateOverlay" hidden>
   <div class="comments-modal">

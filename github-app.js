@@ -32,6 +32,11 @@ function activateSection_(target) {
   });
   if (target === 'utilidades' && window.onActivateUtilidades_) window.onActivateUtilidades_();
   if (target === 'acesso' && window.onActivateAcesso_) window.onActivateAcesso_();
+  // O link #entregas/AAAA-MM só faz sentido na aba Entregas — sai dele ao
+  // trocar de aba para que recarregar a página não volte pra Entregas.
+  if (target !== 'entregas' && /^#entregas/.test(location.hash)) {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
 }
 window.activateSection_ = activateSection_;
 
@@ -55,6 +60,7 @@ const metricsStatusBars = document.getElementById('metricsStatusBars');
 const refreshBtn = document.getElementById('refreshBtn');
 
 let cachedIssues_ = null;
+let lastSyncAt_ = null;
 
 if (refreshBtn) {
   refreshBtn.addEventListener('click', () => loadIssues_(true));
@@ -89,8 +95,10 @@ async function loadIssues_(forceRefresh) {
     }
 
     cachedIssues_ = issues;
+    lastSyncAt_ = new Date();
     renderSiteBoard_(issues);
     renderMetrics_(issues);
+    renderDeliveries_(issues);
 
     const now = new Date();
     const storyCount = issues.filter((i) => i.fields.issuetype.name !== 'Epic').length;
@@ -1586,3 +1594,362 @@ function renderEpicChildrenTable_(container, stories, subtasksByParentKey, epics
   table.appendChild(tbody);
   container.appendChild(table);
 }
+
+// ============================================================================
+// Entregas do mês (aba Entregas) — tela pensada para print e slide da
+// cadência com a diretoria. Uma linha por entrega: Épico → Item → Subtarefa,
+// com 🏆 no card que foi de fato entregue. Cada mês tem link próprio
+// (#entregas/AAAA-MM), então os meses anteriores continuam acessíveis.
+// ============================================================================
+const MONTH_NAMES_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+let deliveriesMonthKey_ = null; // 'AAAA-MM' do mês exibido; null = mês atual
+
+function monthKeyOf_(date) {
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+}
+
+function monthKeyLabel_(monthKey) {
+  const parts = monthKey.split('-');
+  return MONTH_NAMES_PT[+parts[1] - 1] + ' ' + parts[0];
+}
+
+function previousMonthKey_(monthKey) {
+  const parts = monthKey.split('-');
+  return monthKeyOf_(new Date(+parts[0], +parts[1] - 2, 1));
+}
+
+// O Jira devolve "2026-10-16T11:49:05.599-0300"; o fuso sem ":" não é ISO
+// estrito e alguns navegadores (Safari) recusam, então normaliza antes.
+function parseJiraDate_(iso) {
+  if (!iso) return null;
+  const d = new Date(String(iso).replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Data de entrega: campo "Done Date" do Jira (só data, lida como dia local
+// pra não voltar um dia no fuso do Brasil); sem ele, a data em que o item
+// entrou na categoria Done. "CANCELAR" fica na categoria Done, mas não é entrega.
+function deliveryDate_(f) {
+  if (!isDoneStatusWeb_(f) || isCancelStatusWeb_(f)) return null;
+  const doneDate = jiraCustomFieldText_(f.customFields && f.customFields['Done Date']);
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(doneDate || '');
+  if (dateOnly) return new Date(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]);
+  return parseJiraDate_(f.statuscategorychangedate);
+}
+
+function collectDeliveries_(issues) {
+  const byKey = {};
+  const epics = {};
+  issues.forEach((issue) => {
+    byKey[issue.key] = issue;
+    const f = issue.fields;
+    if (f.issuetype.name === 'Epic') {
+      epics[issue.key] = { key: issue.key, summary: f.summary, colorName: jiraEpicColorName_(f) };
+    }
+  });
+
+  const deliveries = [];
+  issues.forEach((issue) => {
+    const f = issue.fields;
+    if (f.issuetype.name === 'Epic') return;
+    const date = deliveryDate_(f);
+    if (!date) return;
+
+    let story = issue;
+    let subtask = null;
+    if (isSubtaskIssue_(f)) {
+      subtask = issue;
+      const parentKey = f.parent ? f.parent.key : null;
+      story = (parentKey && byKey[parentKey]) || (f.parent ? { key: parentKey, fields: f.parent.fields || {} } : null);
+    }
+    const epicKey = story && story.fields.parent ? story.fields.parent.key : null;
+    deliveries.push({ date, monthKey: monthKeyOf_(date), epicKey, story, subtask });
+  });
+
+  return { deliveries, epics };
+}
+
+// Do mês da entrega mais antiga até o mês atual — inclui meses sem entrega,
+// para a sequência de links não pular mês.
+function deliveryMonthKeys_(deliveries) {
+  const current = monthKeyOf_(new Date());
+  const oldest = deliveries.reduce((min, d) => (d.monthKey < min ? d.monthKey : min), current);
+  const keys = [];
+  let key = current;
+  while (key >= oldest) {
+    keys.push(key);
+    key = previousMonthKey_(key);
+  }
+  return keys;
+}
+
+function deliveriesMonthFromHash_() {
+  const match = /^#entregas(?:\/(\d{4}-\d{2}))?$/.exec(location.hash);
+  if (!match) return null;
+  return match[1] || '';
+}
+
+function el_(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+
+function deliveryKeyLink_(key, suffix) {
+  const a = el_('a', 'dcard-key', key + (suffix ? ' · ' + suffix : ''));
+  a.href = JIRA_LINK_(key);
+  a.target = '_blank';
+  a.rel = 'noopener';
+  return a;
+}
+
+function plural_(count, singular, pluralText) {
+  return count + ' ' + (count === 1 ? singular : pluralText);
+}
+
+// Card mesclado (ocupa várias linhas): conteúdo no topo + contador, para a
+// altura extra não parecer um card vazio.
+function buildEpicCard_(epicKey, epic, deliveryCount, merged) {
+  const card = el_('div', 'dcard dcard-epic has-next' + (merged ? ' is-merged' : ''));
+  const body = el_('div', 'dcard-body');
+  if (epicKey) body.appendChild(deliveryKeyLink_(epicKey));
+  body.appendChild(el_('span', 'dcard-title', epic ? epic.summary : 'Sem frente definida'));
+  body.appendChild(el_('span', 'dcard-count', plural_(deliveryCount, 'entrega', 'entregas')));
+  card.appendChild(body);
+  return card;
+}
+
+function buildIssueCard_(issue, typeLabel, delivered, date, hasNext, deliveredChildren) {
+  const merged = deliveredChildren > 1;
+  const card = el_('div', 'dcard dcard-item' + (delivered ? ' is-delivered' : '') + (hasNext ? ' has-next' : '') + (merged ? ' is-merged' : ''));
+  if (!issue) {
+    card.appendChild(el_('span', 'dcard-title', '—'));
+    return card;
+  }
+  const f = issue.fields;
+  if (delivered) card.appendChild(el_('span', 'dcard-trophy', '🏆'));
+  const body = el_('div', 'dcard-body');
+  body.appendChild(deliveryKeyLink_(issue.key, typeLabel));
+  body.appendChild(el_('span', 'dcard-title', f.summary || issue.key));
+  if (delivered) {
+    // Risco/Impacto em itálico, menor, logo depois do nome do colaborador.
+    const meta = el_('span', 'dcard-meta');
+    meta.appendChild(el_('span', 'dcard-badge', 'Entregue'));
+    meta.appendChild(el_('span', null, formatDateWeb_(date)));
+    if (f.assignee) meta.appendChild(el_('span', 'dcard-who', '· ' + f.assignee.displayName));
+    const risco = jiraCustomFieldText_(f.customFields && f.customFields['Risco Impacto']);
+    if (risco) meta.appendChild(el_('em', 'dcard-risk', '· ' + risco));
+    body.appendChild(meta);
+  } else if (deliveredChildren) {
+    body.appendChild(el_('span', 'dcard-count', plural_(deliveredChildren, 'subtarefa entregue', 'subtarefas entregues')));
+  }
+  card.appendChild(body);
+  return card;
+}
+
+// Posição explícita no grid via variáveis CSS, para o media query mobile
+// conseguir desfazer o "mesclado" e empilhar os cards.
+function placeCell_(node, column, rowStart, rowSpan) {
+  node.style.setProperty('--c', column);
+  node.style.setProperty('--r', rowStart);
+  node.style.setProperty('--s', rowSpan);
+  return node;
+}
+
+// Épico → histórias → subtarefas entregues, na ordem em que chegam
+// (já ordenadas por épico e data). A história entregue sem subtarefa
+// traz a própria data; a que só tem subtarefas entregues fica sem data.
+function groupDeliveries_(monthDeliveries) {
+  const groups = [];
+  const groupByEpic = {};
+  monthDeliveries.forEach((d) => {
+    const epicId = d.epicKey || '-';
+    let group = groupByEpic[epicId];
+    if (!group) {
+      group = { epicKey: d.epicKey, stories: [], storyByKey: {} };
+      groupByEpic[epicId] = group;
+      groups.push(group);
+    }
+    const storyId = d.story ? d.story.key : '-';
+    let story = group.storyByKey[storyId];
+    if (!story) {
+      story = { story: d.story, date: null, subtasks: [] };
+      group.storyByKey[storyId] = story;
+      group.stories.push(story);
+    }
+    if (d.subtask) story.subtasks.push({ subtask: d.subtask, date: d.date });
+    else story.date = d.date;
+  });
+  return groups;
+}
+
+// Pódio do mês: top 5 por número de entregas (história ou subtarefa
+// concluída conta 1). Empate desempata pelo nome, para a ordem ser estável.
+function buildPodium_(monthDeliveries) {
+  const counts = {};
+  monthDeliveries.forEach((d) => {
+    const f = (d.subtask || d.story).fields;
+    const name = f.assignee ? f.assignee.displayName : 'Sem responsável';
+    counts[name] = (counts[name] || 0) + 1;
+  });
+  const ranking = Object.keys(counts)
+    .map((name) => ({ name, count: counts[name] }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 5);
+
+  const section = el_('div', 'delivery-podium');
+  section.appendChild(el_('span', 'delivery-podium-title', 'Pódio do mês · quem mais entregou'));
+
+  // 5 degraus, 1º no centro e descendo para as pontas: 4º, 2º, 1º, 3º, 5º.
+  // Posição sem ninguém continua desenhada, vazia, sinalizando que o time
+  // ainda não está completo.
+  const stage = el_('div', 'podium-stage');
+  [3, 1, 0, 2, 4].forEach((idx) => {
+    const entry = ranking[idx];
+    const step = el_('div', 'podium-step podium-place-' + (idx + 1) + (entry ? '' : ' is-vacant'));
+    step.appendChild(el_('span', 'podium-medal', ['🥇', '🥈', '🥉', '🏅', '🏅'][idx]));
+    step.appendChild(el_('span', 'podium-name', entry ? entry.name : 'Posição em aberto'));
+    step.appendChild(el_('span', 'podium-count', entry ? plural_(entry.count, 'entrega', 'entregas') : 'time em formação'));
+    step.appendChild(el_('div', 'podium-block', String(idx + 1) + 'º'));
+    stage.appendChild(step);
+  });
+  section.appendChild(stage);
+  return section;
+}
+
+function renderDeliveries_(issues) {
+  const board = document.getElementById('deliveriesBoard');
+  const monthsNav = document.getElementById('deliveriesMonths');
+  if (!board || !monthsNav) return;
+
+  const { deliveries, epics } = collectDeliveries_(issues);
+  const epicColors = buildEpicColorMap_(epics);
+  const monthKeys = deliveryMonthKeys_(deliveries);
+  const monthKey = monthKeys.indexOf(deliveriesMonthKey_) !== -1 ? deliveriesMonthKey_ : monthKeys[0];
+
+  // Links dos meses (atual primeiro, depois os anteriores)
+  monthsNav.innerHTML = '';
+  monthKeys.forEach((key) => {
+    const count = deliveries.filter((d) => d.monthKey === key).length;
+    const pill = el_('a', 'month-pill');
+    pill.href = '#entregas/' + key;
+    pill.textContent = monthKeyLabel_(key);
+    pill.appendChild(el_('span', 'month-pill-count', String(count)));
+    if (key === monthKey) pill.setAttribute('aria-current', 'page');
+    monthsNav.appendChild(pill);
+  });
+
+  // Agrupa por frente (ordem do épico) e, dentro dela, pela data de entrega.
+  const monthDeliveries = deliveries
+    .filter((d) => d.monthKey === monthKey)
+    .sort((a, b) => (a.epicKey || '~').localeCompare(b.epicKey || '~', undefined, { numeric: true }) || a.date - b.date);
+
+  const storyCount = monthDeliveries.filter((d) => !d.subtask).length;
+  const subtaskCount = monthDeliveries.length - storyCount;
+  const frontCount = monthDeliveries.length ? new Set(monthDeliveries.map((d) => d.epicKey || '-')).size : 0;
+
+  const parts = monthKey.split('-');
+  const isCurrentMonth = monthKey === monthKeyOf_(new Date());
+  const lastDay = isCurrentMonth ? new Date() : new Date(+parts[0], +parts[1], 0);
+  const periodText = '01/' + parts[1] + ' a ' + formatDateWeb_(lastDay) + '/' + parts[0];
+
+  board.innerHTML = '';
+  const frame = el_('div', 'delivery-frame');
+
+  // Cabeçalho
+  const hero = el_('div', 'delivery-hero');
+  const heroText = el_('div', 'delivery-hero-text');
+  heroText.appendChild(el_('span', 'delivery-eyebrow', 'Controle SHM · Cadência com a diretoria'));
+  const title = el_('h2', 'delivery-title', 'Entregas de ');
+  title.appendChild(el_('em', null, monthKeyLabel_(monthKey)));
+  heroText.appendChild(title);
+  heroText.appendChild(el_('p', 'delivery-sub', (isCurrentMonth ? 'Parcial do mês, ' : 'Fechamento do mês, ') + periodText + '. Itens concluídos no Jira (projeto SHMB).'));
+  hero.appendChild(heroText);
+
+  const kpis = el_('div', 'delivery-kpis');
+  [[monthDeliveries.length, 'Entregas'], [storyCount, 'Histórias'], [subtaskCount, 'Subtarefas'], [frontCount, 'Frentes']].forEach((kpi) => {
+    const tile = el_('div', 'delivery-kpi' + (kpi[1] === 'Entregas' ? ' is-main' : ''));
+    tile.appendChild(el_('span', 'delivery-kpi-value', String(kpi[0])));
+    tile.appendChild(el_('span', 'delivery-kpi-label', kpi[1]));
+    kpis.appendChild(tile);
+  });
+  hero.appendChild(kpis);
+  frame.appendChild(hero);
+
+  if (monthDeliveries.length === 0) {
+    const empty = el_('div', 'delivery-empty');
+    empty.appendChild(el_('span', 'delivery-empty-icon', '🗓️'));
+    empty.appendChild(el_('span', null, isCurrentMonth ? 'Nenhuma entrega concluída neste mês até agora.' : 'Nenhuma entrega concluída neste mês.'));
+    frame.appendChild(empty);
+  } else {
+    const heads = el_('div', 'delivery-grid delivery-colheads');
+    ['Frente (Épico)', 'Item', 'Subtarefa'].forEach((label) => heads.appendChild(el_('span', null, label)));
+    frame.appendChild(heads);
+
+    // Épico e história aparecem uma vez só: o card ocupa a altura de todas as
+    // linhas filhas (como célula mesclada), e a página cresce na vertical.
+    const rows = el_('div', 'delivery-rows');
+    groupDeliveries_(monthDeliveries).forEach((group) => {
+      const grid = el_('div', 'delivery-grid delivery-group');
+      grid.style.setProperty('--epic-color', epicColors[group.epicKey] || '#97a0af');
+      const totalRows = group.stories.reduce((sum, s) => sum + Math.max(1, s.subtasks.length), 0);
+      const groupDeliveryCount = group.stories.reduce((sum, s) => sum + s.subtasks.length + (s.date ? 1 : 0), 0);
+      grid.appendChild(placeCell_(buildEpicCard_(group.epicKey, epics[group.epicKey], groupDeliveryCount, totalRows > 1), 1, 1, totalRows));
+
+      let row = 1;
+      group.stories.forEach((s) => {
+        const span = Math.max(1, s.subtasks.length);
+        const storyCard = buildIssueCard_(s.story, 'História', !!s.date, s.date, s.subtasks.length > 0, s.subtasks.length);
+        grid.appendChild(placeCell_(storyCard, 2, row, span));
+        if (s.subtasks.length === 0) {
+          grid.appendChild(placeCell_(el_('div', 'dcard-empty'), 3, row, 1));
+        }
+        s.subtasks.forEach((st, i) => {
+          grid.appendChild(placeCell_(buildIssueCard_(st.subtask, 'Subtarefa', true, st.date, false), 3, row + i, 1));
+        });
+        row += span;
+      });
+      rows.appendChild(grid);
+    });
+    frame.appendChild(rows);
+  }
+
+  if (monthDeliveries.length > 0) frame.appendChild(buildPodium_(monthDeliveries));
+
+  const foot = el_('div', 'delivery-foot');
+  const syncText = lastSyncAt_
+    ? 'atualizado em ' + lastSyncAt_.toLocaleDateString('pt-BR') + ' às ' + lastSyncAt_.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  foot.appendChild(el_('span', null, 'Fonte: Jira, projeto SHMB' + (syncText ? ', ' + syncText : '')));
+  foot.appendChild(el_('span', 'delivery-foot-brand', 'CF5 · SHM'));
+  frame.appendChild(foot);
+
+  board.appendChild(frame);
+}
+
+// Links por mês: abrir #entregas ou #entregas/AAAA-MM leva direto para a aba.
+function syncDeliveriesFromHash_() {
+  const fromHash = deliveriesMonthFromHash_();
+  if (fromHash === null) return;
+  deliveriesMonthKey_ = fromHash || null;
+  activateSection_('entregas');
+  if (cachedIssues_) renderDeliveries_(cachedIssues_);
+}
+window.addEventListener('hashchange', syncDeliveriesFromHash_);
+syncDeliveriesFromHash_();
+
+// Modo apresentação: esconde menu, botões e rodapé para o print sair limpo.
+function setPresenting_(on) {
+  document.body.classList.toggle('is-presenting', on);
+  const exitBtn = document.getElementById('presentExitBtn');
+  if (exitBtn) exitBtn.hidden = !on;
+}
+const deliveriesPresentBtn = document.getElementById('deliveriesPresentBtn');
+if (deliveriesPresentBtn) deliveriesPresentBtn.addEventListener('click', () => setPresenting_(true));
+const presentExitBtn = document.getElementById('presentExitBtn');
+if (presentExitBtn) presentExitBtn.addEventListener('click', () => setPresenting_(false));
+document.addEventListener('keydown', (evt) => {
+  if (evt.key === 'Escape' && document.body.classList.contains('is-presenting')) setPresenting_(false);
+});

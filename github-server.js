@@ -33,7 +33,9 @@ const JQL = `project = ${PROJECT_KEY} ORDER BY parent ASC, created ASC`;
 const CONFIRMED_CUSTOM_FIELD_IDS = {
   'Risco Impacto': 'customfield_10048',
   'Plano de Ação': 'customfield_10082',
-  'Issue color': 'customfield_10017'
+  'Issue color': 'customfield_10017',
+  // Data de entrega usada pela aba Entregas (campo só de data, AAAA-MM-DD).
+  'Done Date': 'customfield_10083'
 };
 
 // Nomes possíveis para os 2 campos que precisam ser descobertos em tempo de
@@ -42,9 +44,12 @@ const CONFIRMED_CUSTOM_FIELD_IDS = {
 const START_DATE_FIELD_NAMES = ['Start date'];
 const FLAGGED_FIELD_NAMES = ['Flagged', 'Sinalizado', 'Sinalizador', 'Sinalizadores'];
 
+// statuscategorychangedate: data em que o item entrou na categoria Done. É a
+// data de entrega usada pela aba Entregas e pelo filtro de 60 dias das
+// Métricas (o workflow do SHMB não preenche resolutiondate, confirmado no Jira).
 const BASE_FIELDS = [
   'summary', 'status', 'assignee', 'created', 'issuetype', 'parent',
-  'subtasks', 'priority'
+  'subtasks', 'priority', 'statuscategorychangedate'
 ];
 
 const app = express();
