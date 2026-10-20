@@ -1124,7 +1124,8 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors, subtas
   const barGap = 6;
   const groupGap = 26;
   const chartHeight = 160;
-  const leftAxisWidth = 22;
+  // Com subtarefas, o eixo ganha espaço para os rótulos "ITENS" / "SUBTAREFAS".
+  const leftAxisWidth = maxSubCount > 0 ? 84 : 22;
   const topPadding = 8;
   const axisLabelHeight = 30;
 
@@ -1212,6 +1213,19 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors, subtas
     negLabel.setAttribute('class', 'viz-axis-label');
     negLabel.textContent = '−' + maxSubCount;
     svg.appendChild(negLabel);
+
+    // Identifica as duas metades do gráfico, junto da linha do zero.
+    [['ITENS ▲', zeroY - 12], ['SUBTAREFAS ▼', zeroY + 16]].forEach((entry) => {
+      const sideLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      sideLabel.setAttribute('x', leftAxisWidth - 16);
+      sideLabel.setAttribute('y', entry[1]);
+      sideLabel.setAttribute('text-anchor', 'end');
+      sideLabel.setAttribute('class', 'viz-axis-label');
+      sideLabel.setAttribute('font-weight', '700');
+      sideLabel.setAttribute('letter-spacing', '0.06em');
+      sideLabel.textContent = entry[0];
+      svg.appendChild(sideLabel);
+    });
   }
 
   let groupXCursor = leftAxisWidth;
