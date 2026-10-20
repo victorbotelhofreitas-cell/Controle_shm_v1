@@ -4,9 +4,9 @@ Painel somente-leitura do projeto Jira **SHMB**, com dados ao vivo via API REST 
 
 Arquivos deste repositório (todos soltos nesta mesma pasta, sem subpasta):
 
-- `github-server.js` — backend Express: busca as issues do Jira, fala com a API do Notion (abas protegidas) e serve a página.
-- `github-index.html` / `github-style.css` / `github-app.js` — frontend (Board Jira + Métricas).
-- `github-protected.js` — frontend das abas protegidas por senha (Utilidades + Acesso): lock gate, cards de copiar script e lista de usuários.
+- `server.js` — backend Express (`github-server.js` ficou só como atalho que carrega o `server.js`): busca as issues do Jira, fala com a API do Notion (abas protegidas) e serve a página.
+- `public/index.html` / `public/github-style.css` / `public/github-app.js` — frontend (Board Jira + Métricas).
+- `public/github-protected.js` — frontend das abas protegidas por senha (Utilidades + Acesso): lock gate, cards de copiar script e lista de usuários.
 - `package.json` / `.gitignore` — **sem prefixo `github-`, de propósito**: `npm` só reconhece `package.json` nesse nome exato na raiz do projeto, e `git` só lê `.gitignore` nesse nome exato — renomear qualquer um dos dois quebra a ferramenta correspondente. Todos os outros arquivos do deploy usam o prefixo `github-` só para ficarem identificáveis entre os arquivos já existentes na pasta (`.gs`, `controle-shm-painel.html`, `CLAUDE.md`, `aprendizados.md`), que não têm nada a ver com este deploy.
 
 ## 1. Rodar localmente
@@ -49,7 +49,7 @@ git init
 # controle-shm-painel.html, CLAUDE.md, aprendizados.md). Esses arquivos
 # podem ir para o repositório também, se você quiser — a decisão é sua —
 # mas não é necessário para o deploy funcionar.
-git add package.json .gitignore github-server.js github-index.html github-style.css github-app.js github-protected.js github-README.md
+git add package.json package-lock.json .gitignore server.js github-server.js public github-README.md
 
 git commit -m "Painel público Controle SHM (Board Jira + Métricas)"
 
@@ -95,20 +95,20 @@ Para habilitar essas duas abas:
 
 **Pontos a validar na primeira execução com um `NOTION_TOKEN` real** (nunca testado nesta sessão de desenvolvimento, sem credenciais disponíveis):
 
-- Se a tabela de acessos é encontrada de primeira pela busca recursiva de blocos (`findFirstTable_` em `github-server.js`), ou se está aninhada em algum bloco (toggle, coluna etc.) que precise de ajuste.
+- Se a tabela de acessos é encontrada de primeira pela busca recursiva de blocos (`findFirstTable_` em `server.js`), ou se está aninhada em algum bloco (toggle, coluna etc.) que precise de ajuste.
 - Se a ordem das colunas da tabela bate com o esperado: **Usuário (e-mail) | Tipo de Acesso | Senha | Visualiza | Quantidade de acessos totais** (só as 3 primeiras são lidas).
 - Se o endpoint `POST /api/access/login` reconhece corretamente e-mails/senhas reais cadastrados na tabela.
-- Se `archived: true` num bloco `table_row` (usado por `POST /api/access/remove`, função `archiveAccessRow_` em `github-server.js`) realmente remove a linha da visualização da tabela — é o padrão documentado da API do Notion para deletar qualquer bloco, mas nunca testado contra esta tabela específica.
+- Se `archived: true` num bloco `table_row` (usado por `POST /api/access/remove`, função `archiveAccessRow_` em `server.js`) realmente remove a linha da visualização da tabela — é o padrão documentado da API do Notion para deletar qualquer bloco, mas nunca testado contra esta tabela específica.
 - Se o `PATCH /v1/blocks/{id}` de `POST /api/access/upsert`/`change-password` (função `updateAccessRow_`) aceita reenviar as 5 cells na mesma ordem de leitura (Usuário | Tipo de Acesso | Senha | Visualiza | Quantidade de acessos totais) sem precisar de nenhum campo adicional.
 - Se `POST /api/access/upsert` com um e-mail novo (função `createAccessRow_`, `POST /v1/blocks/{tableId}/children`) insere a linha corretamente no fim da tabela.
 
 ## 3.2 Export Snap Notion (card em Utilidades)
 
-Usa o mesmo `NOTION_TOKEN` da seção acima — nenhuma configuração extra. Ao clicar no card **Export Snap Notion**, o backend (rota `POST /api/export-snap` em `github-server.js`) busca os issues do Jira (reaproveitando o mesmo cache de `/api/issues`), monta um markdown do board agrupado por status (função `buildNotionReportMarkdown_`) e cria uma **subpágina nova** (nunca sobrescreve) dentro de "Controle SHM / Registro de Snaps" (ID fixo `3e8a28e673618086adc6e3b13dae1240`) via `POST /v1/pages` da API do Notion, com título `DDMMAAAA / Snap do Board`.
+Usa o mesmo `NOTION_TOKEN` da seção acima — nenhuma configuração extra. Ao clicar no card **Export Snap Notion**, o backend (rota `POST /api/export-snap` em `server.js`) busca os issues do Jira (reaproveitando o mesmo cache de `/api/issues`), monta um markdown do board agrupado por status (função `buildNotionReportMarkdown_`) e cria uma **subpágina nova** (nunca sobrescreve) dentro de "Controle SHM / Registro de Snaps" (ID fixo `3e8a28e673618086adc6e3b13dae1240`) via `POST /v1/pages` da API do Notion, com título `DDMMAAAA / Snap do Board`.
 
 **Pontos a validar na primeira execução real** (nunca testado nesta sessão):
 
-- Se a conversão markdown → blocos Notion (`buildNotionBlocksFromMarkdown_`/`mdLineToBlock_`/`richTextForLine_` em `github-server.js`) cobre bem o conteúdo real — ela suporta `##`/`###` (headings), `- ` (bullets), `> ` (quote), `**negrito**` e `[texto](url)` (links), o resto vira parágrafo simples.
+- Se a conversão markdown → blocos Notion (`buildNotionBlocksFromMarkdown_`/`mdLineToBlock_`/`richTextForLine_` em `server.js`) cobre bem o conteúdo real — ela suporta `##`/`###` (headings), `- ` (bullets), `> ` (quote), `**negrito**` e `[texto](url)` (links), o resto vira parágrafo simples.
 - Se a página pai aceita filhos de primeira via `parent.page_id` (comportamento padrão documentado da API do Notion, mas nunca chamado ao vivo aqui).
 - Boards muito grandes (mais de 100 blocos) são enviados em lotes (100 na criação + lotes de 100 via `PATCH /blocks/{id}/children`) — validar que o encadeamento de chamadas não estoura rate limit do Notion.
 
@@ -133,12 +133,12 @@ Diferente do Jira/Notion (um token simples), a Gmail API exige um fluxo OAuth2 c
    - Se a página disser que nenhum `refresh_token` foi retornado, normalmente é porque essa conta já autorizou esse app antes (o Google só entrega refresh_token na primeira autorização). Revogue o acesso em [myaccount.google.com/permissions](https://myaccount.google.com/permissions) e repita o passo 6.
 7. Redeploy/reinicie o serviço no Render para carregar `GMAIL_REFRESH_TOKEN`.
 
-Depois disso, o botão **Sincronizar Gravações BotDesign** chama `POST /api/sync-gravacoes` (`github-server.js`), que: busca no Gmail (`gmail.users.messages.list` com query `"# SHM" tldv.io`) as mensagens candidatas, extrai data/assunto/link tl;dv de cada uma (`extractGmailBodyText_`/regex), busca o texto atual da página Notion "BotDesign (Gravações)" (ID fixo `3e4a28e6736180d8b945da0582398774`), filtra só os vídeos ainda não listados lá, e anexa um bloco divisor + um parágrafo por vídeo novo ao final da página via `PATCH /v1/blocks/{page_id}/children` (a API REST do Notion não tem um "substituir conteúdo" nativo como o MCP original usava — por isso vira "anexar ao final" em vez de reescrever a página inteira).
+Depois disso, o botão **Sincronizar Gravações BotDesign** chama `POST /api/sync-gravacoes` (`server.js`), que: busca no Gmail (`gmail.users.messages.list` com query `"# SHM" tldv.io`) as mensagens candidatas, extrai data/assunto/link tl;dv de cada uma (`extractGmailBodyText_`/regex), busca o texto atual da página Notion "BotDesign (Gravações)" (ID fixo `3e4a28e6736180d8b945da0582398774`), filtra só os vídeos ainda não listados lá, e anexa um bloco divisor + um parágrafo por vídeo novo ao final da página via `PATCH /v1/blocks/{page_id}/children` (a API REST do Notion não tem um "substituir conteúdo" nativo como o MCP original usava — por isso vira "anexar ao final" em vez de reescrever a página inteira).
 
 **Pontos a validar na primeira execução real** (nunca testado, nem no original):
 
 - Se a query de busca `"# SHM" tldv.io` encontra os e-mails certos — "# SHM" pode ser um **label** do Gmail em vez de um termo de busca em texto livre; se não funcionar, tente trocar por `label:shm tldv.io` ou o nome exato do label/marcador usado na caixa de entrada.
-- Se o link tl;dv está mesmo no corpo `text/plain` do e-mail (`extractGmailBodyText_` em `github-server.js`) — se só aparecer em HTML, o código precisa ser ajustado para decodificar a parte `text/html` em vez de (ou além de) `text/plain`.
+- Se o link tl;dv está mesmo no corpo `text/plain` do e-mail (`extractGmailBodyText_` em `server.js`) — se só aparecer em HTML, o código precisa ser ajustado para decodificar a parte `text/html` em vez de (ou além de) `text/plain`.
 - Se o refresh token da Gmail API expira por inatividade (tokens de apps em "modo de teste" no Google Cloud podem expirar em 7 dias) — se o card passar a dar erro de token inválido depois de um tempo sem uso, pode ser necessário publicar o app ("em produção") na tela de consentimento OAuth, ou repetir o passo 6.
 
 ## 4. Sobre o plano Free do Render
@@ -147,7 +147,19 @@ O plano Free "dorme" o serviço depois de alguns minutos sem acesso. O primeiro 
 
 ## Pontos a validar na primeira execução com credenciais reais
 
-`github-server.js` nunca foi testado contra o Jira real nesta sessão de desenvolvimento (sem credenciais disponíveis). Os pontos marcados com comentários "VALIDAR AO VIVO" no código são:
+`server.js` nunca foi testado contra o Jira real nesta sessão de desenvolvimento (sem credenciais disponíveis). Os pontos marcados com comentários "VALIDAR AO VIVO" no código são:
 
-- **Descoberta dos campos "Start date" e "Flagged"**: o ID desses dois campos customizados é descoberto em tempo de execução via `GET /rest/api/3/field`, procurando pelo nome exato (`START_DATE_FIELD_NAMES` / `FLAGGED_FIELD_NAMES`). Se o nome do campo no site Jira for diferente do esperado, o painel simplesmente não encontra esses dados (sem quebrar) — ajuste as listas de nomes em `github-server.js` se for o caso.
+- **Descoberta dos campos "Start date" e "Flagged"**: o ID desses dois campos customizados é descoberto em tempo de execução via `GET /rest/api/3/field`, procurando pelo nome exato (`START_DATE_FIELD_NAMES` / `FLAGGED_FIELD_NAMES`). Se o nome do campo no site Jira for diferente do esperado, o painel simplesmente não encontra esses dados (sem quebrar) — ajuste as listas de nomes em `server.js` se for o caso.
 - **Paginação do endpoint `/rest/api/3/search/jql`**: o código espera um `nextPageToken` na resposta (padrão mais recente do Jira Cloud) — se o site ainda usar o formato antigo (`startAt`/`total`), a paginação precisa ser ajustada.
+
+## Deploy na Vercel (plano Hobby)
+
+O mesmo repositório roda na Vercel sem configuração extra:
+
+- A Vercel reconhece o Express pelo arquivo `server.js` na raiz (ele exporta o `app` e também faz `app.listen`, que a Vercel aceita).
+- Tudo que está em `public/` é servido direto pela CDN da Vercel (o `express.static` só vale no Render/localmente).
+- As rotas `/api/*` e `/auth/*` viram uma Vercel Function, que não "dorme" como o plano Free do Render.
+
+Passos: vercel.com → Add New → Project → importar `Controle_shm_v1` → Framework Preset **Express** → cadastrar as mesmas variáveis de ambiente do Render (`JIRA_EMAIL`, `JIRA_API_TOKEN`, `NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` e `GOOGLE_REDIRECT_URI` apontando para `https://<projeto>.vercel.app/auth/gmail/callback`) → Deploy. Todo push no `master` publica nos dois (Render e Vercel) enquanto os dois estiverem ligados ao repositório.
+
+Observação: os caches em memória (issues 60s, campos 30min, lista de acessos) valem por instância da função na Vercel; funciona igual, só pode buscar o Jira um pouco mais vezes.

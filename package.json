@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "Painel público (somente leitura) do Board Jira e Métricas do projeto SHMB, com dados ao vivo via API REST do Jira.",
   "private": true,
-  "main": "github-server.js",
+  "type": "commonjs",
+  "main": "server.js",
   "scripts": {
-    "start": "node github-server.js"
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=18"
