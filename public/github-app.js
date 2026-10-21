@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', bootSession_);
 // ============================================================================
 // Login com Google: antes de buscar qualquer dado, confere a sessão em
 // /api/me. Sem sessão, mostra a tela de entrada; e-mail fora da lista de
-// Acesso, mostra "sem acesso". Usuário comum não vê Utilidades nem Acesso.
+// Acesso, mostra "sem acesso". Utilidades e Acesso ficam com cadeado para todos.
 // ============================================================================
 window.sessionUser_ = null;
 
@@ -142,12 +142,8 @@ function startApp_(me) {
     userEmail.title = me.email;
     userBox.hidden = false;
   }
-  if (me.role !== 'administrador') {
-    ['navUtilidadesBtn', 'navAcessoBtn'].forEach((id) => {
-      const btn = document.getElementById(id);
-      if (btn) btn.hidden = true;
-    });
-  }
+  // Utilidades e Acesso aparecem para todos com o cadeado; o clique confere
+  // se é administrador (ver openLockGate_ em github-protected.js).
   loadIssues_(false);
 }
 
