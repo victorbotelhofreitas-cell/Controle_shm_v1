@@ -146,7 +146,7 @@ async function currentUser_(req) {
   const list = await getAccessList_();
   const entry = list.find((e) => e.email === session.email);
   if (!entry) return { denied: session.email };
-  return { email: entry.email, name: session.name || '', role: entry.role };
+  return { email: entry.email, name: session.name || entry.name || '', role: entry.role };
 }
 
 app.get('/auth/login', (req, res) => {
@@ -644,36 +644,58 @@ async function fetchNotionPageText_(blockId) {
   return text;
 }
 
-// Colunas confirmadas no original (accessTableMarkdown_ do
-// controle-shm-painel.html): Usuário (e-mail) | Tipo de Acesso | Senha |
-// Visualiza | Quantidade de acessos totais.
-// Monta uma entrada { email, role, password, visualiza, accessCount,
-// rowBlockId } a partir das cells de uma linha — rowBlockId é o id do bloco
-// table_row (necessário pra PATCH/archive numa linha específica ao
-// atualizar/remover; ver fetchTableRowBlocks_).
-function parseAccessRow_(rowBlock) {
-  const cells = rowBlock.cells;
-  const email = normalizeEmail_(cellPlainText_(cells[0]));
-  const tipoRaw = cellPlainText_(cells[1] || []).toLowerCase();
-  const role = tipoRaw.indexOf('admin') !== -1 ? 'administrador' : 'comum';
-  const password = cellPlainText_(cells[2] || []);
-  const visualiza = cellPlainText_(cells[3] || []);
-  const accessCount = cellPlainText_(cells[4] || []);
-  return { email, role, password, visualiza, accessCount, rowBlockId: rowBlock.id };
+// Tabela "Lista de usuários do sistema" da página Notion "Controle SHM /
+// Acessos": Usuário (nome) | E-mail | Tipo de Acesso (Administrador/Comum).
+// As colunas são achadas pelo cabeçalho e, se ele estiver vazio, pelo
+// conteúdo (a do e-mail é a que tem "@"), para a tabela continuar sendo lida
+// se alguém mudar a ordem ou o nome das colunas no Notion.
+const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+
+function accessTableLayout_(headerTexts, dataRows, width) {
+  const layout = { width, name: -1, email: -1, role: -1 };
+  headerTexts.forEach((h, i) => {
+    const t = h.toLowerCase();
+    if (layout.email === -1 && t.indexOf('mail') !== -1) layout.email = i;
+    else if (layout.role === -1 && (t.indexOf('tipo') !== -1 || t.indexOf('acesso') !== -1 || t.indexOf('papel') !== -1)) layout.role = i;
+    else if (layout.name === -1 && (t.indexOf('usu') !== -1 || t.indexOf('nome') !== -1)) layout.name = i;
+  });
+  if (layout.email === -1) {
+    for (let i = 0; i < width && layout.email === -1; i++) {
+      if (dataRows.some((cells) => EMAIL_RE.test(cellPlainText_(cells[i] || [])))) layout.email = i;
+    }
+  }
+  // Uma coluna "Usuário" cheia de e-mails (formato antigo) é a do e-mail.
+  if (layout.name === layout.email) layout.name = -1;
+  return layout;
 }
 
-// Devolve { tableId, hasHeader, entries } — entries já inclui rowBlockId de
-// cada linha (precisa da tabela "crua", não só fetchAccessListFromNotion_,
-// pra permitir escrita). Reaproveitada tanto pela leitura (lista/login)
-// quanto pelas rotas de escrita (upsert/remove/change-password).
+// Monta { name, email, role, rowBlockId } a partir de uma linha. rowBlockId é
+// o id do bloco table_row, usado para remover aquela linha.
+function parseAccessRow_(rowBlock, layout) {
+  const texts = rowBlock.cells.map((c) => cellPlainText_(c || []));
+  let emailText = layout.email !== -1 ? texts[layout.email] : '';
+  if (!EMAIL_RE.test(emailText || '')) emailText = texts.find((t) => EMAIL_RE.test(t)) || '';
+  const match = (emailText || '').match(EMAIL_RE);
+  const email = normalizeEmail_(match ? match[0] : '');
+  const roleText = layout.role !== -1 ? texts[layout.role] : texts.join(' ');
+  const role = (roleText || '').toLowerCase().indexOf('admin') !== -1 ? 'administrador' : 'comum';
+  const name = layout.name !== -1 ? (texts[layout.name] || '').trim() : '';
+  return { name, email, role, rowBlockId: rowBlock.id };
+}
+
+// Devolve { tableId, layout, entries }. Usada pela leitura (login, lista) e
+// pelas rotas de escrita (adicionar, remover).
 async function fetchAccessTableRaw_() {
   const table = await findFirstTable_(NOTION_ACCESS_PAGE_ID);
-  if (!table) throw new Error('Tabela de acessos não encontrada na página Notion (VALIDAR AO VIVO — pode precisar ajustar a busca recursiva).');
+  if (!table) throw new Error('Tabela de usuários não encontrada na página Notion "Controle SHM / Acessos".');
   const rowBlocks = await fetchTableRowBlocks_(table.id);
   const hasHeader = table.table && table.table.has_column_header;
+  const width = (table.table && table.table.table_width) || (rowBlocks[0] ? rowBlocks[0].cells.length : 3);
+  const headerTexts = hasHeader && rowBlocks[0] ? rowBlocks[0].cells.map((c) => cellPlainText_(c || [])) : [];
   const dataRowBlocks = hasHeader ? rowBlocks.slice(1) : rowBlocks;
-  const entries = dataRowBlocks.map(parseAccessRow_).filter((entry) => entry.email);
-  return { tableId: table.id, entries };
+  const layout = accessTableLayout_(headerTexts, dataRowBlocks.map((rb) => rb.cells), width);
+  const entries = dataRowBlocks.map((rb) => parseAccessRow_(rb, layout)).filter((entry) => entry.email);
+  return { tableId: table.id, layout, entries };
 }
 
 async function fetchAccessListFromNotion_() {
@@ -698,59 +720,35 @@ function invalidateAccessListCache_() {
   accessListCache = null;
 }
 
-// Valida e-mail+senha de administrador contra a lista do Notion (mesma lista
-// usada no login) — reaproveitado pelas rotas de escrita (upsert/remove) pra
-// confirmar que quem está chamando a rota é mesmo um administrador logado,
-// já que o site público não tem sessão/cookie de servidor.
-async function requireAdmin_(adminEmail, adminPassword) {
-  const norm = normalizeEmail_(adminEmail);
-  if (!norm || !adminPassword) return null;
-  const list = await getAccessList_();
-  const entry = list.find((e) => e.email === norm);
-  if (entry && entry.password && entry.password === adminPassword && entry.role === 'administrador') {
-    return entry;
-  }
-  return null;
+// Áreas só de administrador (Utilidades e Acesso): quem decide é o login com
+// Google (req.user, preenchido por requireSession_), sem senha.
+function requireAdmin_(req, res, next) {
+  if (req.user && req.user.role === 'administrador') return next();
+  res.status(403).json({ ok: false, error: 'Área restrita a administradores.' });
 }
 
-// Monta as 5 cells (rich_text) de uma linha da tabela de acesso, no mesmo
-// formato aceito pela API do Notion em table_row.cells.
-function buildAccessRowCells_(entry) {
-  const tipo = entry.role === 'administrador' ? 'administrador' : 'usuário';
-  const visualiza = entry.visualiza || (entry.role === 'administrador' ? 'Todo sistema' : 'visualiza abas: Board Jira, Métricas');
-  const accessCount = entry.accessCount || '0';
-  return [
-    [{ type: 'text', text: { content: entry.email } }],
-    [{ type: 'text', text: { content: tipo } }],
-    [{ type: 'text', text: { content: entry.password || '' } }],
-    [{ type: 'text', text: { content: visualiza } }],
-    [{ type: 'text', text: { content: accessCount } }]
-  ];
+// Monta as cells (rich_text) de uma linha nova no formato da tabela:
+// Usuário | E-mail | Tipo de Acesso (colunas que não existirem ficam de fora).
+function buildAccessRowCells_(entry, layout) {
+  const texts = new Array(layout.width).fill('');
+  const emailCol = layout.email !== -1 ? layout.email : 0;
+  texts[emailCol] = entry.email;
+  if (layout.name !== -1) texts[layout.name] = entry.name || '';
+  if (layout.role !== -1) texts[layout.role] = entry.role === 'administrador' ? 'Administrador' : 'Comum';
+  return texts.map((t) => (t ? [{ type: 'text', text: { content: t } }] : []));
 }
 
-// Cria uma linha nova na tabela de acesso.
-async function createAccessRow_(tableId, entry) {
+// Cria uma linha nova na tabela de usuários.
+async function createAccessRow_(tableId, layout, entry) {
   await notionFetch_(`/blocks/${tableId}/children`, {
     method: 'POST',
     body: JSON.stringify({
-      children: [{ object: 'block', type: 'table_row', table_row: { cells: buildAccessRowCells_(entry) } }]
+      children: [{ object: 'block', type: 'table_row', table_row: { cells: buildAccessRowCells_(entry, layout) } }]
     })
   });
 }
 
-// Atualiza uma linha existente (reenvia as 5 cells — a API substitui a linha
-// inteira, por isso buildAccessRowCells_ sempre recebe o entry já mesclado
-// com os valores antigos não alterados).
-async function updateAccessRow_(rowBlockId, entry) {
-  await notionFetch_(`/blocks/${rowBlockId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ table_row: { cells: buildAccessRowCells_(entry) } })
-  });
-}
-
-// "Remove" uma linha via archived:true (padrão da API do Notion para
-// deletar qualquer bloco) — VALIDAR AO VIVO: confirmar que archived:true
-// num table_row realmente o remove da visualização da tabela.
+// Remove uma linha (archived:true é como a API do Notion apaga um bloco).
 async function archiveAccessRow_(rowBlockId) {
   await notionFetch_(`/blocks/${rowBlockId}`, {
     method: 'PATCH',
@@ -915,8 +913,8 @@ app.get('/api/issues', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Acesso (abas Utilidades/Acesso): login por e-mail+senha contra a tabela
-// Notion, e lista somente-leitura (sem senha) dos usuários cadastrados.
+// Acesso (aba Acesso, só administrador): lista, adicionar e remover usuários
+// da tabela Notion. O login em si é feito com o Google (ver /auth/login).
 // ---------------------------------------------------------------------------
 function friendlyNotionError_(err) {
   if (err && err.code === 'NOTION_TOKEN_MISSING') {
@@ -932,141 +930,58 @@ function friendlyNotionError_(err) {
   return { status: 502, body: { error: message, detail: err && err.message } };
 }
 
-app.post('/api/access/login', async (req, res) => {
+// Lista de usuários do sistema (aba Acesso, só administrador).
+app.get('/api/access/list', requireAdmin_, async (req, res) => {
   try {
-    const { email, password } = (req.body || {});
-    if (!email || !password) {
-      return res.status(401).json({ ok: false, error: 'E-mail ou senha incorretos.' });
-    }
-    const list = await getAccessList_();
-    const norm = normalizeEmail_(email);
-    const entry = list.find((e) => e.email === norm);
-    // Mensagem genérica de propósito nos dois casos (e-mail não encontrado OU
-    // senha errada) — nunca revelar qual dos dois foi o motivo.
-    if (entry && entry.password && entry.password === password) {
-      res.json({ ok: true, role: entry.role });
-    } else {
-      res.status(401).json({ ok: false, error: 'E-mail ou senha incorretos.' });
-    }
-  } catch (err) {
-    console.error('[api/access/login] erro:', err.message);
-    const friendly = friendlyNotionError_(err);
-    res.status(friendly.status).json(Object.assign({ ok: false }, friendly.body));
-  }
-});
-
-app.get('/api/access/list', async (req, res) => {
-  try {
-    const list = await getAccessList_();
-    // NUNCA inclua a senha nesta resposta.
-    res.json({ users: list.map((e) => ({ email: e.email, role: e.role })) });
+    const list = await getAccessList_(true);
+    res.json({ ok: true, users: list.map((e) => ({ name: e.name, email: e.email, role: e.role })) });
   } catch (err) {
     console.error('[api/access/list] erro:', err.message);
     const friendly = friendlyNotionError_(err);
-    res.status(friendly.status).json(friendly.body);
+    res.status(friendly.status).json(Object.assign({ ok: false }, friendly.body));
   }
 });
 
-// ---------------------------------------------------------------------------
-// Gestão completa de usuários (porte do painel original controle-shm-painel.html,
-// NÃO EDITAR — accessSaveBtn/accessRemoveBtn/changePasswordSubmitBtn): o site
-// público não tem sessão/cookie de servidor, então toda escrita revalida as
-// credenciais de administrador (ou a senha atual, no caso de troca de senha)
-// no corpo da própria requisição. NUNCA testado contra o Notion real nesta
-// sessão — VALIDAR AO VIVO: comportamento de archived:true num table_row, e
-// se a ordem das cells reenviadas no PATCH precisa ser idêntica à leitura
-// (assumimos que sim, por isso buildAccessRowCells_ sempre monta as 5 na
-// mesma ordem de leitura: Usuário | Tipo de Acesso | Senha | Visualiza |
-// Quantidade de acessos totais).
-// ---------------------------------------------------------------------------
-app.post('/api/access/upsert', async (req, res) => {
+// Adicionar usuário: cria uma linha nova na tabela "Lista de usuários do
+// sistema" com o e-mail e o tipo Comum. O nome e o tipo podem ser ajustados
+// direto no Notion depois.
+app.post('/api/access/add', requireAdmin_, async (req, res) => {
   try {
-    const { adminEmail, adminPassword, email, role, password } = (req.body || {});
-    const admin = await requireAdmin_(adminEmail, adminPassword);
-    if (!admin) {
-      return res.status(401).json({ ok: false, error: 'Credenciais de administrador inválidas.' });
-    }
-    const targetEmail = normalizeEmail_(email);
-    if (!targetEmail || targetEmail.indexOf('@') === -1) {
+    const email = normalizeEmail_((req.body || {}).email);
+    if (!EMAIL_RE.test(email)) {
       return res.status(400).json({ ok: false, error: 'Digite um e-mail válido.' });
     }
-    const targetRole = role === 'administrador' ? 'administrador' : 'comum';
-
     const raw = await fetchAccessTableRaw_();
-    const existing = raw.entries.find((e) => e.email === targetEmail);
-
-    if (existing) {
-      const merged = {
-        email: targetEmail,
-        role: targetRole,
-        // Mantém a senha já cadastrada se nenhuma nova foi informada.
-        password: password ? password : existing.password,
-        visualiza: targetRole === existing.role ? existing.visualiza : null,
-        accessCount: existing.accessCount
-      };
-      await updateAccessRow_(existing.rowBlockId, merged);
-    } else {
-      await createAccessRow_(raw.tableId, { email: targetEmail, role: targetRole, password: password || '' });
+    if (raw.entries.some((e) => e.email === email)) {
+      return res.status(409).json({ ok: false, error: email + ' já está cadastrado.' });
     }
-
+    await createAccessRow_(raw.tableId, raw.layout, { email, role: 'comum' });
     invalidateAccessListCache_();
-    res.json({ ok: true, email: targetEmail, role: targetRole });
+    res.json({ ok: true, email, role: 'comum' });
   } catch (err) {
-    console.error('[api/access/upsert] erro:', err.message);
+    console.error('[api/access/add] erro:', err.message);
     const friendly = friendlyNotionError_(err);
     res.status(friendly.status).json(Object.assign({ ok: false }, friendly.body));
   }
 });
 
-app.post('/api/access/remove', async (req, res) => {
+app.post('/api/access/remove', requireAdmin_, async (req, res) => {
   try {
-    const { adminEmail, adminPassword, email } = (req.body || {});
-    const admin = await requireAdmin_(adminEmail, adminPassword);
-    if (!admin) {
-      return res.status(401).json({ ok: false, error: 'Credenciais de administrador inválidas.' });
-    }
-    const targetEmail = normalizeEmail_(email);
+    const email = normalizeEmail_((req.body || {}).email);
     const raw = await fetchAccessTableRaw_();
-    const existing = raw.entries.find((e) => e.email === targetEmail);
+    const existing = raw.entries.find((e) => e.email === email);
     if (!existing) {
       return res.status(404).json({ ok: false, error: 'Usuário não encontrado.' });
     }
     if (existing.role === 'administrador') {
-      // Trava explícita: administradores nunca podem ser removidos pela
-      // interface, mesma regra do original (accessRemoveBtn).
+      // Administrador nunca é removido pela interface (só direto no Notion).
       return res.status(400).json({ ok: false, error: 'Administradores não podem ser removidos pela interface.' });
     }
-
     await archiveAccessRow_(existing.rowBlockId);
     invalidateAccessListCache_();
-    res.json({ ok: true, email: targetEmail });
+    res.json({ ok: true, email });
   } catch (err) {
     console.error('[api/access/remove] erro:', err.message);
-    const friendly = friendlyNotionError_(err);
-    res.status(friendly.status).json(Object.assign({ ok: false }, friendly.body));
-  }
-});
-
-app.post('/api/access/change-password', async (req, res) => {
-  try {
-    const { email, currentPassword, newPassword } = (req.body || {});
-    const targetEmail = normalizeEmail_(email);
-    if (!targetEmail || !currentPassword || !newPassword) {
-      return res.status(400).json({ ok: false, error: 'Preencha e-mail, senha atual e nova senha.' });
-    }
-
-    const raw = await fetchAccessTableRaw_();
-    const existing = raw.entries.find((e) => e.email === targetEmail);
-    // Mensagem genérica — nunca revelar se o e-mail existe ou não.
-    if (!existing || !existing.password || existing.password !== currentPassword) {
-      return res.status(401).json({ ok: false, error: 'Senha atual incorreta.' });
-    }
-
-    await updateAccessRow_(existing.rowBlockId, Object.assign({}, existing, { password: newPassword }));
-    invalidateAccessListCache_();
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[api/access/change-password] erro:', err.message);
     const friendly = friendlyNotionError_(err);
     res.status(friendly.status).json(Object.assign({ ok: false }, friendly.body));
   }
@@ -1080,7 +995,7 @@ app.post('/api/access/change-password', async (req, res) => {
 // aceitar, é o comportamento padrão da API), e se o markdown->blocos cobre
 // bem o conteúdo real dos issues.
 // ---------------------------------------------------------------------------
-app.post('/api/export-snap', async (req, res) => {
+app.post('/api/export-snap', requireAdmin_, async (req, res) => {
   try {
     const forceRefresh = req.query.refresh === '1';
     const payload = await getIssuesPayload_(forceRefresh);
@@ -1219,7 +1134,7 @@ function gmailHeaderValue_(headers, name) {
 // tl;dv em texto puro (ou só em HTML, o que exigiria decodificar text/html
 // em vez de text/plain em extractGmailBodyText_).
 // ---------------------------------------------------------------------------
-app.post('/api/sync-gravacoes', async (req, res) => {
+app.post('/api/sync-gravacoes', requireAdmin_, async (req, res) => {
   try {
     const gmail = gmailClient_();
 

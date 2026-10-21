@@ -331,32 +331,22 @@
         <header>
           <span class="eyebrow">Controle de acesso</span>
           <h1>Acesso</h1>
-          <p class="subtitle">Lista dos usuários cadastrados para as abas protegidas.</p>
+          <p class="subtitle">Quem pode entrar no painel com a conta Google. A lista fica na página Notion "Controle SHM / Acessos".</p>
         </header>
-        <div class="sync-status" id="acessoStatus">Carregando…</div>
-        <div class="site-table-wrap" id="acessoTableWrap"></div>
 
         <div class="card">
-          <button class="access-save-btn is-secondary" type="button" id="openChangePasswordBtn">Alterar minha senha</button>
+          <div class="access-manage-header">
+            <span class="filename">Lista de usuários do sistema</span>
+            <span class="sync-status" id="acessoStatus">Carregando…</span>
+          </div>
+          <div class="site-table-wrap" id="acessoTableWrap"></div>
         </div>
 
-        <div class="card access-admin-only" id="accessAdminPanel" hidden>
-          <div class="access-manage-header">
-            <span class="filename">Remover usuário selecionado</span>
-            <button class="sync-btn export-btn" type="button" id="accessRemoveBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
-              <span>Remover</span>
-            </button>
-          </div>
-
-          <span class="filename">Adicionar / atualizar usuário</span>
+        <div class="card">
+          <span class="filename">Adicionar usuário</span>
+          <p class="subtitle access-add-hint">Entra como usuário comum. O nome e o tipo de acesso podem ser ajustados direto no Notion.</p>
           <div class="access-form-row">
-            <input class="access-email-input" type="email" id="accessEmailInput" placeholder="e-mail do usuário">
-            <select class="access-role-select" id="accessRoleSelect">
-              <option value="comum">Usuário comum</option>
-              <option value="administrador">Administrador</option>
-            </select>
-            <input class="access-email-input" type="password" id="accessPasswordInput" placeholder="senha (deixe em branco para manter a atual)" autocomplete="new-password">
+            <input class="access-email-input" type="email" id="accessEmailInput" placeholder="e-mail Google da pessoa" autocomplete="off">
             <button class="access-save-btn" type="button" id="accessSaveBtn">Salvar</button>
           </div>
           <div class="sync-status" id="accessSaveStatus"></div>
@@ -374,32 +364,10 @@
 <div class="comments-modal-overlay" id="lockGateOverlay" hidden>
   <div class="comments-modal">
     <div class="comments-modal-header">
-      <div class="comments-modal-title">🔒 Área protegida</div>
+      <div class="comments-modal-title">🔒 Área do administrador</div>
       <button class="comments-modal-close" type="button" id="lockGateClose" aria-label="Fechar">✕</button>
     </div>
-    <p class="note" style="margin-top: 0;">Digite o e-mail e a senha cadastrados na aba Acesso para entrar aqui.</p>
-    <div class="access-form-row">
-      <input class="access-email-input" type="email" id="lockGateEmailInput" placeholder="e-mail cadastrado">
-      <input class="access-email-input" type="password" id="lockGatePasswordInput" placeholder="senha">
-      <button class="access-save-btn" type="button" id="lockGateSubmitBtn">Entrar</button>
-    </div>
-    <div class="sync-status" id="lockGateStatus"></div>
-  </div>
-</div>
-
-<div class="comments-modal-overlay" id="changePasswordOverlay" hidden>
-  <div class="comments-modal">
-    <div class="comments-modal-header">
-      <div class="comments-modal-title">Alterar senha</div>
-      <button class="comments-modal-close" type="button" id="changePasswordClose" aria-label="Fechar">✕</button>
-    </div>
-    <p class="note" style="margin-top: 0;">Usa o e-mail com que você entrou na área protegida.</p>
-    <div class="access-form-row">
-      <input class="access-email-input" type="password" id="changePasswordCurrentInput" placeholder="senha atual">
-      <input class="access-email-input" type="password" id="changePasswordNewInput" placeholder="senha nova">
-      <button class="access-save-btn" type="button" id="changePasswordSubmitBtn">Confirmar</button>
-    </div>
-    <div class="sync-status" id="changePasswordStatus"></div>
+    <p class="note" style="margin-top: 0;" id="lockGateStatus">Conferindo seu acesso…</p>
   </div>
 </div>
 
