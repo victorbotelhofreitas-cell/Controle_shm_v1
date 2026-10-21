@@ -66,7 +66,90 @@ if (refreshBtn) {
   refreshBtn.addEventListener('click', () => loadIssues_(true));
 }
 
-document.addEventListener('DOMContentLoaded', () => loadIssues_(false));
+document.addEventListener('DOMContentLoaded', bootSession_);
+
+// ============================================================================
+// Login com Google: antes de buscar qualquer dado, confere a sessão em
+// /api/me. Sem sessão, mostra a tela de entrada; e-mail fora da lista de
+// Acesso, mostra "sem acesso". Usuário comum não vê Utilidades nem Acesso.
+// ============================================================================
+window.sessionUser_ = null;
+
+async function bootSession_() {
+  const params = new URLSearchParams(window.location.search);
+  const loginResult = params.get('login');
+  if (loginResult) window.history.replaceState(null, '', window.location.pathname);
+
+  if (loginResult === 'negado') {
+    showLoginGate_('denied', params.get('email'));
+    return;
+  }
+  try {
+    const res = await fetch('/api/me');
+    const me = await res.json().catch(() => null);
+    if (res.ok && me && me.ok) {
+      startApp_(me);
+      return;
+    }
+    if (res.status === 403 && me) {
+      showLoginGate_('denied', me.email);
+      return;
+    }
+    if (res.status === 401) {
+      showLoginGate_(loginResult === 'erro' ? 'error' : 'login');
+      return;
+    }
+    showLoginGate_('unavailable', null, me && me.error);
+  } catch (err) {
+    console.error(err);
+    showLoginGate_('unavailable');
+  }
+}
+
+function showLoginGate_(kind, email, detail) {
+  const gate = document.getElementById('loginGate');
+  const shell = document.getElementById('appShell');
+  if (shell) shell.hidden = true;
+  if (!gate) return;
+  gate.hidden = false;
+  const texts = {
+    login: ['Entre para ver o painel', 'Use a sua conta Google. Só entra quem tem o e-mail cadastrado no Controle SHM.', 'Entrar com Google'],
+    error: ['Não foi possível entrar', 'O login com o Google não foi concluído. Tente de novo.', 'Entrar com Google'],
+    denied: ['Sem acesso ainda', 'Este e-mail não está cadastrado no Controle SHM. Peça ao administrador para incluir o seu e-mail na aba Acesso, ou entre com outra conta.', 'Entrar com outra conta'],
+    unavailable: ['Não foi possível conferir o acesso', detail || 'O servidor não respondeu agora. Recarregue a página em instantes.', 'Tentar entrar de novo']
+  };
+  const t = texts[kind] || texts.login;
+  document.getElementById('loginGateSpinner').hidden = true;
+  document.getElementById('loginGateTitle').textContent = t[0];
+  document.getElementById('loginGateDesc').textContent = t[1];
+  const emailEl = document.getElementById('loginGateEmail');
+  emailEl.hidden = !email;
+  emailEl.textContent = email || '';
+  document.getElementById('loginGoogleLabel').textContent = t[2];
+  document.getElementById('loginGoogleBtn').hidden = false;
+}
+
+function startApp_(me) {
+  window.sessionUser_ = me;
+  const gate = document.getElementById('loginGate');
+  const shell = document.getElementById('appShell');
+  if (gate) gate.hidden = true;
+  if (shell) shell.hidden = false;
+  const userBox = document.getElementById('topbarUser');
+  const userEmail = document.getElementById('topbarUserEmail');
+  if (userBox && userEmail) {
+    userEmail.textContent = me.name || me.email;
+    userEmail.title = me.email;
+    userBox.hidden = false;
+  }
+  if (me.role !== 'administrador') {
+    ['navUtilidadesBtn', 'navAcessoBtn'].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.hidden = true;
+    });
+  }
+  loadIssues_(false);
+}
 
 // ============================================================================
 // Busca de dados (substitui o antigo mcp.callTool pelo endpoint próprio)
@@ -81,6 +164,10 @@ async function loadIssues_(forceRefresh) {
     const payload = await res.json().catch(() => null);
 
     if (!res.ok) {
+      if (payload && payload.loginRequired) {
+        showLoginGate_('login');
+        return;
+      }
       const message = (payload && payload.error) || errorMessageFor_(res.status);
       setSyncState_('error', message);
       console.error('Erro ao buscar /api/issues:', payload);

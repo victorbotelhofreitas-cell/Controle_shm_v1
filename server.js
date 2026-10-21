@@ -56,6 +56,181 @@ const app = express();
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
+// Login com Google: só entra quem tem o e-mail cadastrado na tabela Notion
+// "Controle SHM / Acessos" (a mesma da aba Acesso). A sessão fica num cookie
+// assinado (HMAC), e toda rota /api confere de novo se o e-mail continua na
+// lista, então remover alguém da tabela corta o acesso em até ~1 minuto
+// (cache da lista). A página em public/ é servida pela CDN da Vercel sem
+// passar por aqui; quem protege os dados são as rotas /api, e a página só
+// mostra a tela de entrada quando /api/me responde sem sessão.
+// ---------------------------------------------------------------------------
+const crypto = require('crypto');
+
+const SESSION_COOKIE = 'shm_session';
+const LOGIN_STATE_COOKIE = 'shm_login_state';
+const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60; // 30 dias
+const LOGIN_SCOPES = ['openid', 'email', 'profile'];
+
+// SESSION_SECRET (variável de ambiente) assina o cookie. Sem ela, deriva uma
+// chave do GOOGLE_CLIENT_SECRET, que já existe na Vercel.
+function sessionSecret_() {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (process.env.GOOGLE_CLIENT_SECRET) {
+    return crypto.createHash('sha256').update('shm-session:' + process.env.GOOGLE_CLIENT_SECRET).digest('hex');
+  }
+  throw new Error('SESSION_SECRET (ou GOOGLE_CLIENT_SECRET) não configurado nas variáveis de ambiente do servidor.');
+}
+
+function signValue_(value) {
+  const body = Buffer.from(JSON.stringify(value)).toString('base64url');
+  const sig = crypto.createHmac('sha256', sessionSecret_()).update(body).digest('base64url');
+  return body + '.' + sig;
+}
+
+function readSignedValue_(token) {
+  if (!token || token.indexOf('.') === -1) return null;
+  const [body, sig] = token.split('.');
+  const expected = crypto.createHmac('sha256', sessionSecret_()).update(body).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const value = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (!value || !value.exp || value.exp < Date.now()) return null;
+    return value;
+  } catch (e) {
+    return null;
+  }
+}
+
+function readCookies_(req) {
+  const out = {};
+  (req.headers.cookie || '').split(';').forEach((part) => {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  });
+  return out;
+}
+
+function isHttps_(req) {
+  return (req.headers['x-forwarded-proto'] || req.protocol) === 'https';
+}
+
+function setCookie_(req, res, name, value, maxAgeS) {
+  const parts = [name + '=' + encodeURIComponent(value), 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=' + maxAgeS];
+  if (isHttps_(req)) parts.push('Secure');
+  const prev = res.getHeader('Set-Cookie');
+  res.setHeader('Set-Cookie', (prev ? [].concat(prev) : []).concat(parts.join('; ')));
+}
+
+function publicBaseUrl_(req) {
+  if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0];
+  return proto + '://' + req.headers.host;
+}
+
+function loginOAuthClient_(req) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET não configurados nas variáveis de ambiente do servidor.');
+  }
+  return new google.auth.OAuth2(clientId, clientSecret, publicBaseUrl_(req) + '/auth/login/callback');
+}
+
+// Devolve { email, name, role } se o cookie é válido e o e-mail continua
+// cadastrado; null se não há sessão; { denied: email } se o e-mail saiu da lista.
+async function currentUser_(req) {
+  const session = readSignedValue_(readCookies_(req)[SESSION_COOKIE]);
+  if (!session || !session.email) return null;
+  const list = await getAccessList_();
+  const entry = list.find((e) => e.email === session.email);
+  if (!entry) return { denied: session.email };
+  return { email: entry.email, name: session.name || '', role: entry.role };
+}
+
+app.get('/auth/login', (req, res) => {
+  try {
+    const state = crypto.randomBytes(16).toString('hex');
+    setCookie_(req, res, LOGIN_STATE_COOKIE, state, 10 * 60);
+    const url = loginOAuthClient_(req).generateAuthUrl({
+      scope: LOGIN_SCOPES,
+      prompt: 'select_account',
+      state
+    });
+    res.redirect(url);
+  } catch (err) {
+    res.status(500).send('<pre>' + err.message + '</pre>');
+  }
+});
+
+app.get('/auth/login/callback', async (req, res) => {
+  try {
+    const expectedState = readCookies_(req)[LOGIN_STATE_COOKIE];
+    setCookie_(req, res, LOGIN_STATE_COOKIE, '', 0);
+    if (req.query.error) return res.redirect('/?login=cancelado');
+    if (!req.query.code || !req.query.state || req.query.state !== expectedState) {
+      return res.redirect('/?login=erro');
+    }
+    const client = loginOAuthClient_(req);
+    const { tokens } = await client.getToken(String(req.query.code));
+    const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: process.env.GOOGLE_CLIENT_ID });
+    const profile = ticket.getPayload() || {};
+    const email = normalizeEmail_(profile.email);
+    if (!email || profile.email_verified === false) return res.redirect('/?login=erro');
+
+    const list = await getAccessList_(true);
+    if (!list.some((e) => e.email === email)) {
+      return res.redirect('/?login=negado&email=' + encodeURIComponent(email));
+    }
+    const session = { email, name: profile.name || '', exp: Date.now() + SESSION_MAX_AGE_S * 1000 };
+    setCookie_(req, res, SESSION_COOKIE, signValue_(session), SESSION_MAX_AGE_S);
+    res.redirect('/');
+  } catch (err) {
+    console.error('[auth/login/callback] erro:', err.message);
+    res.redirect('/?login=erro');
+  }
+});
+
+app.get('/auth/logout', (req, res) => {
+  setCookie_(req, res, SESSION_COOKIE, '', 0);
+  res.redirect('/');
+});
+
+app.get('/api/me', async (req, res) => {
+  try {
+    const user = await currentUser_(req);
+    if (!user) return res.status(401).json({ ok: false, error: 'Faça login para continuar.' });
+    if (user.denied) {
+      setCookie_(req, res, SESSION_COOKIE, '', 0);
+      return res.status(403).json({ ok: false, email: user.denied, error: 'Este e-mail não tem mais acesso ao painel.' });
+    }
+    res.json({ ok: true, email: user.email, name: user.name, role: user.role });
+  } catch (err) {
+    console.error('[api/me] erro:', err.message);
+    res.status(502).json({ ok: false, error: 'Não foi possível conferir o acesso agora. Tente de novo em instantes.' });
+  }
+});
+
+// Toda rota /api (e a autorização do Gmail) exige sessão de alguém cadastrado.
+async function requireSession_(req, res, next) {
+  try {
+    const user = await currentUser_(req);
+    if (!user || user.denied) return res.status(401).json({ ok: false, error: 'Faça login para continuar.', loginRequired: true });
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error('[requireSession_] erro:', err.message);
+    res.status(502).json({ ok: false, error: 'Não foi possível conferir o acesso agora. Tente de novo em instantes.' });
+  }
+}
+app.use('/api', requireSession_);
+app.use('/auth/gmail', requireSession_, (req, res, next) => {
+  if (req.user.role !== 'administrador') return res.status(403).send('<pre>Só administradores podem autorizar o Gmail.</pre>');
+  next();
+});
+
+// ---------------------------------------------------------------------------
 // Notion (abas Utilidades/Acesso — login + lista somente leitura). Usa um
 // token de integração NOVO guardado em NOTION_TOKEN (diferente do Jira),
 // mesmo padrão de chamada do relatorio-horas.gs (Bearer + Notion-Version),
