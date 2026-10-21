@@ -13,20 +13,29 @@ window.PASSWORD_PROTECTED_SECTIONS_ = ['utilidades', 'acesso'];
 // Fica sempre vazio: a verificação é refeita a cada clique.
 window.protectedSectionsUnlocked_ = {};
 
-// Escreve um aviso curto embaixo do nome do menu, sem abrir janela, e some
-// sozinho depois de alguns segundos.
-function showNavHint_(target, text) {
-  const btn = document.querySelector('.topbar-nav-item[data-section="' + target + '"]');
-  if (!btn) return;
-  let hint = btn.querySelector('.nav-admin-hint');
-  if (!hint) {
-    hint = document.createElement('span');
-    hint.className = 'nav-admin-hint';
-    btn.appendChild(hint);
+// Janelinha no centro da tela ao clicar num menu com cadeado: "Acesso
+// permitido" para administrador, "Acesso restrito" para usuário comum. Some
+// sozinha em menos de 2 segundos, ou com um clique.
+function showAccessPopup_(allowed, detail) {
+  let popup = document.getElementById('accessPopup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'accessPopup';
+    popup.className = 'access-popup';
+    popup.setAttribute('role', 'status');
+    popup.setAttribute('aria-live', 'polite');
+    popup.innerHTML = '<span class="access-popup-icon"></span><span class="access-popup-title"></span><span class="access-popup-detail"></span>';
+    popup.addEventListener('click', () => { popup.hidden = true; });
+    document.body.appendChild(popup);
   }
-  hint.textContent = text;
-  clearTimeout(hint._timer);
-  hint._timer = setTimeout(() => hint.remove(), 3500);
+  popup.classList.toggle('is-allowed', allowed);
+  popup.classList.toggle('is-denied', !allowed);
+  popup.querySelector('.access-popup-icon').textContent = allowed ? '🔓' : '🔒';
+  popup.querySelector('.access-popup-title').textContent = allowed ? 'Acesso permitido' : 'Acesso restrito';
+  popup.querySelector('.access-popup-detail').textContent = detail || '';
+  popup.hidden = false;
+  clearTimeout(popup._timer);
+  popup._timer = setTimeout(() => { popup.hidden = true; }, 1800);
 }
 
 window.openLockGate_ = async function openLockGate_(target) {
@@ -36,17 +45,18 @@ window.openLockGate_ = async function openLockGate_(target) {
     if (res.ok && me && me.ok) {
       window.sessionUser_ = me;
       if (me.role === 'administrador') {
+        showAccessPopup_(true, 'Administrador');
         if (window.activateSection_) window.activateSection_(target);
         return;
       }
-      showNavHint_(target, 'Área de administrador');
+      showAccessPopup_(false, 'Área do administrador');
     } else if (res.status === 401 || res.status === 403) {
       window.location.reload();
     } else {
-      showNavHint_(target, 'Tente de novo');
+      showAccessPopup_(false, 'Não foi possível conferir agora. Tente de novo.');
     }
   } catch (e) {
-    showNavHint_(target, 'Tente de novo');
+    showAccessPopup_(false, 'Não foi possível conferir agora. Tente de novo.');
   }
 };
 
