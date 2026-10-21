@@ -584,6 +584,8 @@ h1 { margin: 0; font-size: 23px; font-weight: 400; letter-spacing: -0.005em; }
 
 /* --- Utilidades / Acesso (abas protegidas) --- */
 .nav-lock-badge { font-size: 11px; margin-left: 4px; }
+/* Aviso curto embaixo do nome do menu quando um usuário comum clica nele */
+.nav-admin-hint { display: block; margin-top: 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; color: #f6b08e; }
 
 .card {
   background: var(--surface);

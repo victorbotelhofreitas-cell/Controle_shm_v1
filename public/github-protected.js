@@ -13,45 +13,42 @@ window.PASSWORD_PROTECTED_SECTIONS_ = ['utilidades', 'acesso'];
 // Fica sempre vazio: a verificação é refeita a cada clique.
 window.protectedSectionsUnlocked_ = {};
 
+// Escreve um aviso curto embaixo do nome do menu, sem abrir janela, e some
+// sozinho depois de alguns segundos.
+function showNavHint_(target, text) {
+  const btn = document.querySelector('.topbar-nav-item[data-section="' + target + '"]');
+  if (!btn) return;
+  let hint = btn.querySelector('.nav-admin-hint');
+  if (!hint) {
+    hint = document.createElement('span');
+    hint.className = 'nav-admin-hint';
+    btn.appendChild(hint);
+  }
+  hint.textContent = text;
+  clearTimeout(hint._timer);
+  hint._timer = setTimeout(() => hint.remove(), 3500);
+}
+
 window.openLockGate_ = async function openLockGate_(target) {
-  const overlay = document.getElementById('lockGateOverlay');
-  const status = document.getElementById('lockGateStatus');
   try {
     const res = await fetch('/api/me');
     const me = await res.json().catch(() => null);
     if (res.ok && me && me.ok) {
       window.sessionUser_ = me;
       if (me.role === 'administrador') {
-        if (overlay) overlay.hidden = true;
         if (window.activateSection_) window.activateSection_(target);
         return;
       }
-      if (status) status.textContent = 'Esta área é só para administradores. Seu acesso (' + me.email + ') é de usuário comum.';
+      showNavHint_(target, 'Área de administrador');
     } else if (res.status === 401 || res.status === 403) {
       window.location.reload();
-      return;
     } else {
-      if (status) status.textContent = (me && me.error) || 'Não foi possível conferir o acesso agora. Tente de novo em instantes.';
+      showNavHint_(target, 'Tente de novo');
     }
   } catch (e) {
-    if (status) status.textContent = 'Não foi possível conferir o acesso: ' + (e && e.message ? e.message : e);
+    showNavHint_(target, 'Tente de novo');
   }
-  if (overlay) overlay.hidden = false;
 };
-
-function closeLockGate_() {
-  const overlay = document.getElementById('lockGateOverlay');
-  if (overlay) overlay.hidden = true;
-}
-
-const lockGateClose = document.getElementById('lockGateClose');
-if (lockGateClose) lockGateClose.addEventListener('click', closeLockGate_);
-const lockGateOverlayEl = document.getElementById('lockGateOverlay');
-if (lockGateOverlayEl) {
-  lockGateOverlayEl.addEventListener('click', (ev) => {
-    if (ev.target === lockGateOverlayEl) closeLockGate_();
-  });
-}
 
 // ============================================================================
 // Aba Utilidades — 2 cards de copiar script (Código.gs principal + Relatório
