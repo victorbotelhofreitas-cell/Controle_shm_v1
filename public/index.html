@@ -37,6 +37,62 @@
           </div>
         </header>
         <div class="sync-status" id="syncStatus">Carregando…</div>
+
+        <details class="method-box viz-root" open>
+          <summary class="method-summary"><span class="kanban-chevron">▾</span>Detalhamento metodologia</summary>
+          <div class="method-body">
+            <div>
+              <div class="method-section-title">Como o trabalho se organiza</div>
+              <div class="method-levels">
+                <div class="method-level">
+                  <div class="method-level-head"><span class="method-level-name">Épico</span><span class="method-level-tag">Epic</span></div>
+                  <p class="method-level-desc">São as <strong>frentes de trabalho</strong>. Cada frente tem uma cor, que aparece na borda dos cards e na legenda abaixo.</p>
+                </div>
+                <div class="method-level">
+                  <div class="method-level-head"><span class="method-level-name">História</span><span class="method-level-tag">Story</span></div>
+                  <p class="method-level-desc">São as <strong>atividades dentro das frentes</strong>. Cada história é uma entrega de valor e é ela que anda pelas etapas do board.</p>
+                </div>
+                <div class="method-level">
+                  <div class="method-level-head"><span class="method-level-name">Subtarefa</span><span class="method-level-tag">Subtask</span></div>
+                  <p class="method-level-desc">São a <strong>decomposição das histórias</strong> em passos menores, para organizar a execução.</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="method-section-title">Etapas do board Kanban</div>
+              <div class="method-pool">
+                <div class="method-pool-track">
+                  <div class="method-swimlane is-epic">
+                    <div class="method-swimlane-head">
+                      <span><span class="method-swimlane-icon" aria-hidden="true">🏊</span><span class="method-swimlane-name">Épicos</span></span>
+                      <span class="method-swimlane-hint">frentes de trabalho</span>
+                    </div>
+                    <span class="method-swimlane-arrow" aria-hidden="true"></span>
+                  </div>
+                  <div class="method-stages">
+                    <span class="method-stages-line" aria-hidden="true"></span>
+                    <div class="method-stages-grid">
+                      <div class="method-stage" style="--step-color: var(--viz-s1);"><span class="method-step-name">Backlog</span><span class="method-step-dot"></span></div>
+                      <div class="method-stage" style="--step-color: var(--viz-s2);"><span class="method-step-name">Aprovado Comprometido</span><span class="method-step-dot"></span></div>
+                      <div class="method-stage" style="--step-color: var(--viz-s3);"><span class="method-step-name">Fazendo</span><span class="method-step-dot"></span></div>
+                      <div class="method-stage" style="--step-color: var(--viz-s4);"><span class="method-step-name">Teste Validação</span><span class="method-step-dot"></span></div>
+                      <div class="method-stage" style="--step-color: var(--viz-s5);"><span class="method-step-name">Done</span><span class="method-step-dot"></span></div>
+                    </div>
+                  </div>
+                  <div class="method-swimlane is-story">
+                    <div class="method-swimlane-head">
+                      <span><span class="method-swimlane-icon" aria-hidden="true">🏊</span><span class="method-swimlane-name">Histórias</span><span class="method-subtasks">[ <b>subtask 1</b> · <b>subtask 2</b> · <b>subtask n</b> ]</span></span>
+                      <span class="method-swimlane-hint">entrega de valor</span>
+                    </div>
+                    <span class="method-swimlane-arrow" aria-hidden="true"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <div class="kanban-board" id="siteKanban">
           <div class="kanban-empty">Carregando cards do Jira…</div>
         </div>
@@ -55,7 +111,9 @@
         <div class="stat-grid" id="metricsStats">
           <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">Frentes (Epics)</span></div>
           <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">Total de Stories</span></div>
-          <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">Concluídas</span><span class="stat-desc">nos últimos 60 dias</span></div>
+          <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">🏆 Concluídas</span><span class="stat-desc">nos últimos 60 dias</span></div>
+          <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">Total de Subtarefas</span></div>
+          <div class="stat-tile"><span class="stat-value">–</span><span class="stat-label">🏆 Subtarefas concluídas</span><span class="stat-desc">nos últimos 60 dias</span></div>
         </div>
 
         <div class="metrics-card viz-root">
@@ -87,13 +145,6 @@
         </div>
 
         <div class="metrics-card">
-          <h2>Itens criados x terminados</h2>
-          <div id="metricsCreatedVsDoneChart">
-            <p class="metrics-empty">Carregando dados do Jira…</p>
-          </div>
-        </div>
-
-        <div class="metrics-card">
           <h2>Distribuição por Frente (Itens Cancelados) <span class="metrics-count-badge" id="metricsCancelledCount">–</span></h2>
           <div class="site-table-wrap" id="metricsCancelledTable">
             <p class="metrics-empty">Carregando dados do Jira…</p>
@@ -101,7 +152,14 @@
         </div>
 
         <div class="metrics-card">
-          <h2>Itens por responsável</h2>
+          <h2>Itens criados x terminados</h2>
+          <div id="metricsCreatedVsDoneChart">
+            <p class="metrics-empty">Carregando dados do Jira…</p>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>Itens por responsável <span class="metrics-count-badge">Histórias</span></h2>
           <div class="assignee-split-grid">
             <div class="assignee-split-col">
               <h3 class="assignee-split-title">Para fazer <span class="assignee-split-desc">(Backlog + Aprovado Comprometido)</span></h3>
@@ -118,6 +176,30 @@
             <div class="assignee-split-col">
               <h3 class="assignee-split-title">Finalizados <span class="assignee-split-desc">(últimos 60 dias)</span></h3>
               <div class="bar-list" id="metricsAssigneeDoneBars">
+                <p class="metrics-empty">Carregando dados do Jira…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <h2>Subtarefas por responsável <span class="metrics-count-badge">Subtarefas</span></h2>
+          <div class="assignee-split-grid">
+            <div class="assignee-split-col">
+              <h3 class="assignee-split-title">Para fazer <span class="assignee-split-desc">(Backlog + Aprovado Comprometido)</span></h3>
+              <div class="bar-list" id="metricsSubAssigneeToDoBars">
+                <p class="metrics-empty">Carregando dados do Jira…</p>
+              </div>
+            </div>
+            <div class="assignee-split-col">
+              <h3 class="assignee-split-title">Em andamento <span class="assignee-split-desc">(Fazendo + Teste Validação)</span></h3>
+              <div class="bar-list" id="metricsSubAssigneeOpenBars">
+                <p class="metrics-empty">Carregando dados do Jira…</p>
+              </div>
+            </div>
+            <div class="assignee-split-col">
+              <h3 class="assignee-split-title">Finalizados <span class="assignee-split-desc">(últimos 60 dias)</span></h3>
+              <div class="bar-list" id="metricsSubAssigneeDoneBars">
                 <p class="metrics-empty">Carregando dados do Jira…</p>
               </div>
             </div>

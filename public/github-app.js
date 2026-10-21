@@ -260,7 +260,7 @@ function buildStatusBuckets_(byStatus) {
 const GROUPED_CHART_STATUS_ORDER = ['Backlog', 'Aprovado Comprometido', 'Fazendo', 'Teste Validação', 'Done'];
 
 const HEADER_LABELS_WEB = [
-  'Data Surg', 'Projeto ou Frente', 'Key', 'Nome da Atividade',
+  'Data Surg', 'Key', 'Nome da Atividade',
   'Status', 'Prioridade', 'Plano de Ação', 'Responsável', 'Risco Impacto', 'CLT', 'LT'
 ];
 
@@ -587,11 +587,16 @@ function buildSubtaskRow_(sub, epicColor) {
   const ltDays = leadTimeDays_(startDateIso, referenceIso);
 
   row.appendChild(cell(formatDateWeb_(f.created)));
-  row.appendChild(cell('↳ Subtarefa', 'subtask-tag-cell'));
   const keyCell = cell(linkCell_(JIRA_LINK_(sub.key), sub.key + (isDone ? ' ✓' : '')), 'key-cell');
   keyCell.title = sub.key + (isDone ? ' (concluída)' : '');
   row.appendChild(keyCell);
-  row.appendChild(cell(f.summary));
+  // Nome da Atividade: marca "↳ Subtarefa" na linha de cima, nome embaixo.
+  const activityCell = document.createElement('div');
+  activityCell.className = 'kanban-card-cell activity-cell';
+  activityCell.title = 'Subtarefa\n' + f.summary;
+  activityCell.appendChild(el_('span', 'activity-epic', '↳ Subtarefa'));
+  activityCell.appendChild(el_('span', 'activity-name', f.summary));
+  row.appendChild(activityCell);
   row.appendChild(cell(f.status.name));
   const priorityCell = document.createElement('div');
   priorityCell.className = 'kanban-card-cell priority-cell' + (isHighPriority_(priorityName) ? ' is-high-priority' : '');
@@ -726,17 +731,6 @@ function renderSiteBoard_(issues) {
         dataCell.title = formatDateWeb_(f.created);
         card.appendChild(dataCell);
 
-        const epicCell = document.createElement('div');
-        epicCell.className = 'kanban-card-cell truncate-cell';
-        epicCell.title = epic.key + ' ' + epic.summary;
-        const epicLink = document.createElement('a');
-        epicLink.href = JIRA_LINK_(epic.key);
-        epicLink.target = '_blank';
-        epicLink.rel = 'noopener';
-        epicLink.textContent = epic.key + ' ' + epic.summary;
-        epicCell.appendChild(epicLink);
-        card.appendChild(epicCell);
-
         const keyCell = document.createElement('div');
         keyCell.className = 'kanban-card-cell key-cell truncate-cell';
         keyCell.title = issue.key + (isDone ? ' 🏆' : '');
@@ -744,10 +738,15 @@ function renderSiteBoard_(issues) {
         keyCell.appendChild(keyLink);
         card.appendChild(keyCell);
 
+        // Nome da Atividade: frente (épico, com link) em linha pequena em
+        // cima e o nome da história embaixo, numa coluna só.
         const summaryCell = document.createElement('div');
-        summaryCell.className = 'kanban-card-cell truncate-cell';
-        summaryCell.textContent = f.summary;
-        summaryCell.title = f.summary;
+        summaryCell.className = 'kanban-card-cell activity-cell';
+        summaryCell.title = epic.key + ' ' + epic.summary + '\n' + f.summary;
+        const epicLink = linkCell_(JIRA_LINK_(epic.key), epic.key + ' ' + epic.summary);
+        epicLink.className = 'activity-epic';
+        summaryCell.appendChild(epicLink);
+        summaryCell.appendChild(el_('span', 'activity-name', f.summary));
         card.appendChild(summaryCell);
 
         const statusCell = document.createElement('div');
@@ -857,7 +856,16 @@ function renderMetrics_(issues) {
     return doneDays === null || doneDays <= 60;
   }).length;
 
-  setStatTiles_([Object.keys(epics).length, total, doneCount]);
+  // Subtarefas: total e concluídas nos últimos 60 dias (mesma regra das
+  // histórias, sem contar canceladas).
+  const subtaskList = Object.keys(subtasksByParentKey).reduce((list, k) => list.concat(subtasksByParentKey[k]), []);
+  const subtaskDoneCount = subtaskList.filter((s) => {
+    const doneDate = deliveryDate_(s.fields);
+    if (!doneDate) return false;
+    return (Date.now() - doneDate.getTime()) / 86400000 <= 60;
+  }).length;
+
+  setStatTiles_([Object.keys(epics).length, total, doneCount, subtaskList.length, subtaskDoneCount]);
 
   renderEpicPieChart_(document.getElementById('metricsEpicPie'), stories, epics, buildEpicColorMap_(epics));
 
@@ -870,13 +878,33 @@ function renderMetrics_(issues) {
   if (cancelledCountEl) cancelledCountEl.textContent = (cancelledStories.length + cancelledSubtaskCount) + ' item(ns)';
   renderEpicChildrenTable_(document.getElementById('metricsCancelledTable'), cancelledStories, subtasksByParentKeyCancelled, epics, buildEpicColorMap_(epics), true);
 
+  // Mesmos 3 gráficos por responsável, um conjunto pras histórias e outro
+  // pras subtarefas.
+  renderAssigneeSplit_(stories,
+    document.getElementById('metricsAssigneeToDoBars'),
+    document.getElementById('metricsAssigneeOpenBars'),
+    document.getElementById('metricsAssigneeDoneBars'));
+  renderAssigneeSplit_(subtaskList,
+    document.getElementById('metricsSubAssigneeToDoBars'),
+    document.getElementById('metricsSubAssigneeOpenBars'),
+    document.getElementById('metricsSubAssigneeDoneBars'));
+
+  renderFlaggedOpenItems_(document.getElementById('metricsFlaggedItems'), stories, epics);
+
+  renderCreatedVsDoneChart_(document.getElementById('metricsCreatedVsDoneChart'), stories, epics, buildEpicColorMap_(epics), subtaskList);
+}
+
+// Distribui a lista por responsável em Para fazer / Em andamento /
+// Finalizados (últimos 60 dias) e desenha as três barras.
+function renderAssigneeSplit_(list, toDoEl, openEl, doneEl) {
+  if (!toDoEl || !openEl || !doneEl) return;
   const byAssigneeToDo = {};
   const byAssigneeOpen = {};
   const byAssigneeDone = {};
   const issuesByAssigneeToDo = {};
   const issuesByAssigneeOpen = {};
   const issuesByAssigneeDone = {};
-  stories.filter((i) => !isCancelStatusWeb_(i.fields)).forEach((i) => {
+  list.filter((i) => !isCancelStatusWeb_(i.fields)).forEach((i) => {
     const f = i.fields;
     const label = f.assignee ? f.assignee.displayName : '-';
     if (isDoneStatusWeb_(f)) {
@@ -896,14 +924,9 @@ function renderMetrics_(issues) {
   const toDoTotal = Object.values(byAssigneeToDo).reduce((sum, n) => sum + n, 0);
   const openTotal = Object.values(byAssigneeOpen).reduce((sum, n) => sum + n, 0);
   const doneTotal = Object.values(byAssigneeDone).reduce((sum, n) => sum + n, 0);
-  renderBarList_(document.getElementById('metricsAssigneeToDoBars'), sortByCountDesc_(byAssigneeToDo), toDoTotal, issuesByAssigneeToDo);
-  renderBarList_(document.getElementById('metricsAssigneeOpenBars'), sortByCountDesc_(byAssigneeOpen), openTotal, issuesByAssigneeOpen);
-  renderBarList_(document.getElementById('metricsAssigneeDoneBars'), sortByCountDesc_(byAssigneeDone), doneTotal, issuesByAssigneeDone);
-
-  renderFlaggedOpenItems_(document.getElementById('metricsFlaggedItems'), stories, epics);
-
-  const allSubtasks = Object.keys(subtasksByParentKey).reduce((list, k) => list.concat(subtasksByParentKey[k]), []);
-  renderCreatedVsDoneChart_(document.getElementById('metricsCreatedVsDoneChart'), stories, epics, buildEpicColorMap_(epics), allSubtasks);
+  renderBarList_(toDoEl, sortByCountDesc_(byAssigneeToDo), toDoTotal, issuesByAssigneeToDo, assigneeColor_);
+  renderBarList_(openEl, sortByCountDesc_(byAssigneeOpen), openTotal, issuesByAssigneeOpen, assigneeColor_);
+  renderBarList_(doneEl, sortByCountDesc_(byAssigneeDone), doneTotal, issuesByAssigneeDone, assigneeColor_);
 }
 
 function setStatTiles_(values) {
@@ -1209,7 +1232,9 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors, subtas
 
     if (isDoneStatusWeb_(f)) {
       const doneIso = doneReferenceDateIso_(f) || f.created;
-      const doneDate = new Date(doneIso);
+      // "AAAA-MM-DD" sozinho seria lido como UTC e cairia no dia anterior no
+      // fuso do Brasil (01/10 viraria setembro); lê como dia local.
+      const doneDate = /^\d{4}-\d{2}-\d{2}$/.test(doneIso) ? new Date(doneIso + 'T00:00:00') : new Date(doneIso);
       const dk = monthKey_(doneDate.getFullYear(), doneDate.getMonth());
       if (doneByMonthEpic.hasOwnProperty(dk)) {
         doneByMonthEpic[dk][epicKey] = (doneByMonthEpic[dk][epicKey] || 0) + 1;
@@ -1308,6 +1333,25 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors, subtas
   pattern.appendChild(hatchLine);
   defs.appendChild(pattern);
   svg.appendChild(defs);
+
+  // Faixas alternadas (branco / cinza claro) na altura toda do gráfico,
+  // marcando onde começa e termina cada mês.
+  let bandCursor = leftAxisWidth;
+  months.forEach((mo, mi) => {
+    const bandStart = mi === 0 ? leftAxisWidth : bandCursor - groupGap / 2;
+    const bandEnd = mi === months.length - 1 ? width - 4 : bandCursor + groupWidths[mi] + groupGap / 2;
+    bandCursor += groupWidths[mi] + groupGap;
+    if (mi % 2 === 0) return;
+    const band = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    band.setAttribute('x', bandStart);
+    band.setAttribute('y', 0);
+    band.setAttribute('width', bandEnd - bandStart);
+    band.setAttribute('height', height);
+    band.setAttribute('fill', '#8993a4');
+    band.setAttribute('opacity', '0.1');
+    band.setAttribute('pointer-events', 'none');
+    svg.appendChild(band);
+  });
 
   [0, 0.5, 1].forEach((frac) => {
     const y = topPadding + chartHeight * (1 - frac);
@@ -1605,7 +1649,22 @@ function renderCreatedVsDoneChart_(container, stories, epics, epicColors, subtas
   container.appendChild(wrap);
 }
 
-function renderBarList_(container, rows, total, issuesByLabel) {
+// Cor fixa por colaborador nos gráficos "por responsável": a mesma pessoa tem
+// sempre a mesma cor em todos os gráficos, e cada pessoa uma cor diferente,
+// todas em tons de azul/marinho que combinam com o painel.
+const ASSIGNEE_PALETTE = ['#23406e', '#0f8a8c', '#5b4bc4', '#2a78d6', '#0e7490', '#7c5cd6', '#3b82c4', '#155e75', '#6366a8', '#2f9bd1'];
+const ASSIGNEE_FIXED_COLOR_IDX = { 'victor freitas': 0, 'nestor rodrigues rocha': 1, 'flavia azevedo': 2 };
+function assigneeColor_(name) {
+  const key = (name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+  if (!key || key === '-' || key === 'sem responsavel') return '#97a0af';
+  if (ASSIGNEE_FIXED_COLOR_IDX.hasOwnProperty(key)) return ASSIGNEE_PALETTE[ASSIGNEE_FIXED_COLOR_IDX[key]];
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  const free = ASSIGNEE_PALETTE.length - 3;
+  return ASSIGNEE_PALETTE[3 + (hash % free)];
+}
+
+function renderBarList_(container, rows, total, issuesByLabel, colorForLabel) {
   container.innerHTML = '';
   if (rows.length === 0) {
     const p = document.createElement('p');
@@ -1631,6 +1690,14 @@ function renderBarList_(container, rows, total, issuesByLabel) {
     const fill = document.createElement('div');
     fill.className = 'bar-fill';
     fill.style.width = pct + '%';
+    if (colorForLabel) {
+      const color = colorForLabel(row.label);
+      fill.style.background = 'linear-gradient(90deg, color-mix(in srgb, ' + color + ' 25%, transparent), ' + color + ')';
+      const dot = document.createElement('span');
+      dot.className = 'bar-row-dot';
+      dot.style.background = color;
+      label.prepend(dot);
+    }
     track.appendChild(fill);
 
     const countEl = document.createElement('span');
