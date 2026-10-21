@@ -266,13 +266,20 @@ async function removeAccessUser_(email, btn) {
       if (status) { status.textContent = 'Removido: ' + email + '.'; status.className = 'sync-status is-ok'; }
       await loadAcessoList_();
     } else {
-      if (status) { status.textContent = (payload && payload.error) || 'Não foi possível remover.'; status.className = 'sync-status is-error'; }
+      if (status) { status.textContent = errorWithDetail_(payload, 'Não foi possível remover.'); status.className = 'sync-status is-error'; }
       btn.disabled = false;
     }
   } catch (e) {
     if (status) { status.textContent = 'Falha ao chamar o servidor: ' + (e && e.message ? e.message : e); status.className = 'sync-status is-error'; }
     btn.disabled = false;
   }
+}
+
+// Mensagem de erro do servidor + o motivo técnico devolvido pelo Notion, para
+// dar para saber o que aconteceu sem abrir o log da Vercel.
+function errorWithDetail_(payload, fallback) {
+  const message = (payload && payload.error) || fallback;
+  return payload && payload.detail ? message + ' Detalhe: ' + payload.detail : message;
 }
 
 function wireAccessAddPanel_() {
@@ -304,7 +311,7 @@ function wireAccessAddPanel_() {
         emailInput.value = '';
         await loadAcessoList_();
       } else {
-        status.textContent = (payload && payload.error) || 'Não foi possível salvar.';
+        status.textContent = errorWithDetail_(payload, 'Não foi possível salvar.');
         status.className = 'sync-status is-error';
       }
     } catch (e) {

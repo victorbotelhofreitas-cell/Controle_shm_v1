@@ -955,7 +955,9 @@ app.post('/api/access/add', requireAdmin_, async (req, res) => {
     if (raw.entries.some((e) => e.email === email)) {
       return res.status(409).json({ ok: false, error: email + ' já está cadastrado.' });
     }
-    await createAccessRow_(raw.tableId, raw.layout, { email, role: 'comum' });
+    // Nome provisório = parte do e-mail antes do @ (nenhuma célula vai vazia);
+    // dá para trocar pelo nome real direto no Notion.
+    await createAccessRow_(raw.tableId, raw.layout, { email, name: email.split('@')[0], role: 'comum' });
     invalidateAccessListCache_();
     res.json({ ok: true, email, role: 'comum' });
   } catch (err) {
