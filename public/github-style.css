@@ -296,8 +296,8 @@ table.site-table a:hover { text-decoration: underline; }
 .kanban-row-grid {
   display: grid;
   grid-template-columns:
-    minmax(42px, 0.5fr) minmax(76px, 0.7fr)
-    minmax(340px, 4fr) minmax(66px, 0.7fr) minmax(22px, 0.2fr)
+    minmax(42px, 0.5fr) minmax(150px, 1.5fr)
+    minmax(330px, 3.2fr) minmax(66px, 0.7fr) minmax(22px, 0.2fr)
     minmax(140px, 1.6fr) minmax(50px, 0.5fr) minmax(72px, 1.0fr)
     minmax(38px, 0.4fr) minmax(54px, 0.6fr);
   gap: 5px;
@@ -1154,6 +1154,19 @@ body.is-presenting .app-main { padding: 28px 24px; }
   vertical-align: 1px;
 }
 .kanban-card.is-subtask .activity-cell .activity-epic { font-style: italic; }
+/* Key da história (link azul, fonte mono) antes do nome, na mesma coluna */
+.kanban-card-cell .story-key { font-family: 'JetBrains Mono', ui-monospace, monospace; margin-right: 6px; }
+/* Coluna Épico: bolinha na cor da frente antes da chave + nome */
+.kanban-card-cell.epic-cell::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--epic-color, var(--border));
+  vertical-align: 1px;
+}
 
 .bar-row-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 
@@ -1305,8 +1318,15 @@ body.is-presenting .app-main { padding: 28px 24px; }
   border: 2px solid var(--surface);
   box-shadow: 0 0 0 1px var(--step-color);
 }
+/* Celular: nada some, só encolhe a letra e deixa a raia crescer se o texto
+   quebrar de linha (a seta continua colada embaixo). */
 @media (max-width: 680px) {
-  .method-swimlane-hint, .method-subtasks { display: none; }
+  .method-swimlane { height: auto; min-height: 52px; padding: 7px 10px 22px; }
+  .method-swimlane-head { flex-wrap: wrap; gap: 2px 8px; }
+  .method-swimlane-name { font-size: 13px; }
+  .method-swimlane-hint { font-size: 9px; white-space: normal; }
+  .method-subtasks { font-size: 8px; margin-left: 4px; }
+  .method-step-name { font-size: 8.5px; }
 }
 
 .method-note {

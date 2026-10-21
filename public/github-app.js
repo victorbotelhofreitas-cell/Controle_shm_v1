@@ -260,7 +260,7 @@ function buildStatusBuckets_(byStatus) {
 const GROUPED_CHART_STATUS_ORDER = ['Backlog', 'Aprovado Comprometido', 'Fazendo', 'Teste Validação', 'Done'];
 
 const HEADER_LABELS_WEB = [
-  'Data Surg', 'Key', 'Nome da Atividade',
+  'Data Surg', 'Épico', 'História · Nome da Atividade',
   'Status', 'Prioridade', 'Plano de Ação', 'Responsável', 'Risco Impacto', 'CLT', 'LT'
 ];
 
@@ -587,16 +587,16 @@ function buildSubtaskRow_(sub, epicColor) {
   const ltDays = leadTimeDays_(startDateIso, referenceIso);
 
   row.appendChild(cell(formatDateWeb_(f.created)));
-  const keyCell = cell(linkCell_(JIRA_LINK_(sub.key), sub.key + (isDone ? ' ✓' : '')), 'key-cell');
-  keyCell.title = sub.key + (isDone ? ' (concluída)' : '');
-  row.appendChild(keyCell);
-  // Nome da Atividade: marca "↳ Subtarefa" na linha de cima, nome embaixo.
-  const activityCell = document.createElement('div');
-  activityCell.className = 'kanban-card-cell activity-cell';
-  activityCell.title = 'Subtarefa\n' + f.summary;
-  activityCell.appendChild(el_('span', 'activity-epic', '↳ Subtarefa'));
-  activityCell.appendChild(el_('span', 'activity-name', f.summary));
-  row.appendChild(activityCell);
+  row.appendChild(cell('↳ Subtarefa', 'subtask-tag-cell'));
+  // História · Nome da Atividade: key (link) + espaço + nome da subtarefa
+  const nameCell = document.createElement('div');
+  nameCell.className = 'kanban-card-cell truncate-cell';
+  nameCell.title = sub.key + (isDone ? ' (concluída)' : '') + ' ' + f.summary;
+  const subKeyLink = linkCell_(JIRA_LINK_(sub.key), sub.key + (isDone ? ' ✓' : ''));
+  subKeyLink.className = 'story-key';
+  nameCell.appendChild(subKeyLink);
+  nameCell.appendChild(document.createTextNode(f.summary));
+  row.appendChild(nameCell);
   row.appendChild(cell(f.status.name));
   const priorityCell = document.createElement('div');
   priorityCell.className = 'kanban-card-cell priority-cell' + (isHighPriority_(priorityName) ? ' is-high-priority' : '');
@@ -731,22 +731,21 @@ function renderSiteBoard_(issues) {
         dataCell.title = formatDateWeb_(f.created);
         card.appendChild(dataCell);
 
-        const keyCell = document.createElement('div');
-        keyCell.className = 'kanban-card-cell key-cell truncate-cell';
-        keyCell.title = issue.key + (isDone ? ' 🏆' : '');
-        const keyLink = linkCell_(JIRA_LINK_(issue.key), issue.key + (isDone ? ' 🏆' : ''));
-        keyCell.appendChild(keyLink);
-        card.appendChild(keyCell);
+        // Épico: chave + nome da frente, com a bolinha na cor dela.
+        const epicCell = document.createElement('div');
+        epicCell.className = 'kanban-card-cell truncate-cell epic-cell';
+        epicCell.title = epic.key + ' ' + epic.summary;
+        epicCell.appendChild(linkCell_(JIRA_LINK_(epic.key), epic.key + ' ' + epic.summary));
+        card.appendChild(epicCell);
 
-        // Nome da Atividade: frente (épico, com link) em linha pequena em
-        // cima e o nome da história embaixo, numa coluna só.
+        // História · Nome da Atividade: key (link) + espaço + nome da história
         const summaryCell = document.createElement('div');
-        summaryCell.className = 'kanban-card-cell activity-cell';
-        summaryCell.title = epic.key + ' ' + epic.summary + '\n' + f.summary;
-        const epicLink = linkCell_(JIRA_LINK_(epic.key), epic.key + ' ' + epic.summary);
-        epicLink.className = 'activity-epic';
-        summaryCell.appendChild(epicLink);
-        summaryCell.appendChild(el_('span', 'activity-name', f.summary));
+        summaryCell.className = 'kanban-card-cell truncate-cell';
+        summaryCell.title = issue.key + (isDone ? ' 🏆' : '') + ' ' + f.summary;
+        const keyLink = linkCell_(JIRA_LINK_(issue.key), issue.key + (isDone ? ' 🏆' : ''));
+        keyLink.className = 'story-key';
+        summaryCell.appendChild(keyLink);
+        summaryCell.appendChild(document.createTextNode(f.summary));
         card.appendChild(summaryCell);
 
         const statusCell = document.createElement('div');
