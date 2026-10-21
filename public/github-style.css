@@ -466,13 +466,51 @@ table.site-table a:hover { text-decoration: underline; }
 .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 999px; }
 .bar-row-count { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
-.assignee-split-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
-.assignee-split-title { font-size: 12.5px; font-weight: 700; color: var(--text); margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
-.assignee-split-desc { font-size: 10.5px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-muted); }
-.assignee-split-col .bar-fill { background: linear-gradient(90deg, #9aa0a8, #4b5158); }
-:root[data-theme="dark"] .assignee-split-col .bar-fill { background: linear-gradient(90deg, #6b7280, #d1d5db); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .assignee-split-col .bar-fill { background: linear-gradient(90deg, #6b7280, #d1d5db); }
+/* --- Itens por responsável: uma linha por pessoa, histórias e subtarefas
+   lado a lado em cada etapa --- */
+.people-summary { display: flex; flex-direction: column; }
+.ps-row { display: grid; grid-template-columns: minmax(170px, 1.1fr) repeat(3, minmax(0, 1fr)); gap: 16px; align-items: center; padding: 10px 4px; border-top: 1px solid var(--border-soft); }
+.ps-head { border-top: none; padding-top: 2px; padding-bottom: 6px; align-items: end; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); }
+.ps-head small { display: block; margin-top: 2px; font-size: 10px; font-weight: 400; letter-spacing: normal; text-transform: none; color: var(--text-muted); }
+.ps-person-head { color: var(--text-muted); }
+.ps-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ps-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background: var(--person-color, #97a0af);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--person-color, #97a0af) 18%, transparent);
+}
+.ps-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-cell { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.ps-cell.is-empty { opacity: 0.55; }
+.ps-nums { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; font-size: 11.5px; color: var(--text-muted); }
+.ps-part b { margin-right: 1px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--person-color, var(--text)); }
+.ps-part.is-sub b { color: color-mix(in srgb, var(--person-color, var(--text)) 55%, var(--text-muted)); }
+.ps-part.is-zero b { color: var(--text-muted); opacity: 0.6; }
+.ps-bar { display: flex; height: 5px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
+.ps-bar span { border-radius: 999px; }
+.ps-bar-story { background: var(--person-color); }
+.ps-bar-sub { background: color-mix(in srgb, var(--person-color) 40%, transparent); }
+.ps-total { border-top: 1px solid var(--border); --person-color: var(--text); }
+.ps-total .ps-cell { padding-top: 4px; padding-bottom: 4px; background: transparent; }
+.ps-total-label { padding-left: 40px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.ps-legend { margin-top: -4px; }
+.ps-legend-dot { width: 14px; height: 5px; border-radius: 999px; background: #5d6f8f; }
+.ps-legend-dot.is-sub { background: color-mix(in srgb, #5d6f8f 40%, transparent); }
+@media (max-width: 760px) {
+  .ps-head { display: none; }
+  .ps-row { grid-template-columns: 1fr; gap: 8px; padding: 14px 2px; }
+  .ps-cell::before { content: attr(data-stage); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+  .ps-total-label { padding-left: 0; }
 }
 
 .epic-group-list { display: flex; flex-direction: column; gap: 14px; }
@@ -1342,8 +1380,14 @@ body.is-presenting .app-main { padding: 28px 24px; }
 .method-note strong { color: var(--text); font-weight: 600; }
 
 @media (max-width: 680px) {
-  .method-levels { grid-template-columns: 1fr; gap: 10px; }
+  .method-levels { grid-template-columns: 1fr; gap: 8px; }
   .method-level + .method-level::before { content: none; }
+  /* Celular: cards de Épico, História e Subtarefa mais compactos */
+  .method-level { min-height: 0; padding: 14px 16px; gap: 6px; }
+  .method-level-name { font-size: 12.5px; }
+  .method-level-tag { font-size: 9px; }
+  .method-level-desc { font-size: 11px; line-height: 1.4; }
+  .method-body { gap: 14px; padding: 0 12px 14px; }
   .method-step-name { font-size: 10.5px; }
 }
 

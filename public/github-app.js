@@ -877,55 +877,146 @@ function renderMetrics_(issues) {
   if (cancelledCountEl) cancelledCountEl.textContent = (cancelledStories.length + cancelledSubtaskCount) + ' item(ns)';
   renderEpicChildrenTable_(document.getElementById('metricsCancelledTable'), cancelledStories, subtasksByParentKeyCancelled, epics, buildEpicColorMap_(epics), true);
 
-  // Mesmos 3 gráficos por responsável, um conjunto pras histórias e outro
-  // pras subtarefas.
-  renderAssigneeSplit_(stories,
-    document.getElementById('metricsAssigneeToDoBars'),
-    document.getElementById('metricsAssigneeOpenBars'),
-    document.getElementById('metricsAssigneeDoneBars'));
-  renderAssigneeSplit_(subtaskList,
-    document.getElementById('metricsSubAssigneeToDoBars'),
-    document.getElementById('metricsSubAssigneeOpenBars'),
-    document.getElementById('metricsSubAssigneeDoneBars'));
+  renderPeopleSummary_(document.getElementById('metricsPeopleSummary'), stories, subtaskList);
 
   renderFlaggedOpenItems_(document.getElementById('metricsFlaggedItems'), stories, epics);
 
   renderCreatedVsDoneChart_(document.getElementById('metricsCreatedVsDoneChart'), stories, epics, buildEpicColorMap_(epics), subtaskList);
 }
 
-// Distribui a lista por responsável em Para fazer / Em andamento /
-// Finalizados (últimos 60 dias) e desenha as três barras.
-function renderAssigneeSplit_(list, toDoEl, openEl, doneEl) {
-  if (!toDoEl || !openEl || !doneEl) return;
-  const byAssigneeToDo = {};
-  const byAssigneeOpen = {};
-  const byAssigneeDone = {};
-  const issuesByAssigneeToDo = {};
-  const issuesByAssigneeOpen = {};
-  const issuesByAssigneeDone = {};
-  list.filter((i) => !isCancelStatusWeb_(i.fields)).forEach((i) => {
-    const f = i.fields;
-    const label = f.assignee ? f.assignee.displayName : '-';
-    if (isDoneStatusWeb_(f)) {
-      const doneDays = daysSince_(doneReferenceDateIso_(f));
-      if (doneDays === null || doneDays <= 60) {
-        byAssigneeDone[label] = (byAssigneeDone[label] || 0) + 1;
-        (issuesByAssigneeDone[label] = issuesByAssigneeDone[label] || []).push(i);
-      }
-    } else if (isToDoStatusWeb_(f.status.name)) {
-      byAssigneeToDo[label] = (byAssigneeToDo[label] || 0) + 1;
-      (issuesByAssigneeToDo[label] = issuesByAssigneeToDo[label] || []).push(i);
-    } else {
-      byAssigneeOpen[label] = (byAssigneeOpen[label] || 0) + 1;
-      (issuesByAssigneeOpen[label] = issuesByAssigneeOpen[label] || []).push(i);
+// Itens por responsável: uma linha por pessoa e, em cada etapa (Para fazer,
+// Em andamento, Finalizados nos últimos 60 dias), quantas histórias e quantas
+// subtarefas ela tem. Cancelados ficam de fora.
+const PEOPLE_STAGES = [
+  { key: 'todo', label: 'Para fazer', desc: 'Backlog + Aprovado Comprometido' },
+  { key: 'open', label: 'Em andamento', desc: 'Fazendo + Teste Validação' },
+  { key: 'done', label: 'Finalizados', desc: 'últimos 60 dias' }
+];
+const NO_ASSIGNEE_LABEL = 'Sem responsável';
+
+function peopleStageOf_(f) {
+  if (isCancelStatusWeb_(f)) return null;
+  if (isDoneStatusWeb_(f)) {
+    const doneDays = daysSince_(doneReferenceDateIso_(f));
+    return doneDays === null || doneDays <= 60 ? 'done' : null;
+  }
+  return isToDoStatusWeb_(f.status.name) ? 'todo' : 'open';
+}
+
+function personInitials_(name) {
+  if (name === NO_ASSIGNEE_LABEL) return '?';
+  const parts = name.trim().split(/\s+/);
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
+function renderPeopleSummary_(container, stories, subtasks) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  const people = {};
+  const add = (issue, kind) => {
+    const stage = peopleStageOf_(issue.fields);
+    if (!stage) return;
+    const name = issue.fields.assignee ? issue.fields.assignee.displayName : NO_ASSIGNEE_LABEL;
+    if (!people[name]) {
+      people[name] = { name, total: 0 };
+      PEOPLE_STAGES.forEach((s) => { people[name][s.key] = { stories: [], subtasks: [] }; });
     }
+    people[name][stage][kind].push(issue);
+    people[name].total++;
+  };
+  stories.forEach((i) => add(i, 'stories'));
+  subtasks.forEach((i) => add(i, 'subtasks'));
+
+  // Quem tem mais itens primeiro; "Sem responsável" sempre por último.
+  const rows = Object.values(people).sort((a, b) =>
+    (a.name === NO_ASSIGNEE_LABEL) - (b.name === NO_ASSIGNEE_LABEL) || b.total - a.total || a.name.localeCompare(b.name));
+  if (rows.length === 0) {
+    container.appendChild(el_('p', 'metrics-empty', 'Sem dados.'));
+    return;
+  }
+
+  // A barrinha de cada etapa usa como escala o maior total daquela etapa.
+  const maxByStage = {};
+  const totals = {};
+  PEOPLE_STAGES.forEach((s) => {
+    maxByStage[s.key] = Math.max(1, ...rows.map((r) => r[s.key].stories.length + r[s.key].subtasks.length));
+    totals[s.key] = { stories: [], subtasks: [] };
   });
-  const toDoTotal = Object.values(byAssigneeToDo).reduce((sum, n) => sum + n, 0);
-  const openTotal = Object.values(byAssigneeOpen).reduce((sum, n) => sum + n, 0);
-  const doneTotal = Object.values(byAssigneeDone).reduce((sum, n) => sum + n, 0);
-  renderBarList_(toDoEl, sortByCountDesc_(byAssigneeToDo), toDoTotal, issuesByAssigneeToDo, assigneeColor_);
-  renderBarList_(openEl, sortByCountDesc_(byAssigneeOpen), openTotal, issuesByAssigneeOpen, assigneeColor_);
-  renderBarList_(doneEl, sortByCountDesc_(byAssigneeDone), doneTotal, issuesByAssigneeDone, assigneeColor_);
+
+  const table = el_('div', 'people-summary');
+  const head = el_('div', 'ps-row ps-head');
+  head.appendChild(el_('span', 'ps-person-head', 'Pessoa'));
+  PEOPLE_STAGES.forEach((s) => {
+    const h = el_('span', null, s.label);
+    h.appendChild(el_('small', null, s.desc));
+    head.appendChild(h);
+  });
+  table.appendChild(head);
+
+  rows.forEach((p) => {
+    const row = el_('div', 'ps-row');
+    row.style.setProperty('--person-color', assigneeColor_(p.name));
+    const person = el_('div', 'ps-person');
+    person.title = p.name;
+    person.appendChild(el_('span', 'ps-avatar', personInitials_(p.name)));
+    person.appendChild(el_('span', 'ps-name', p.name));
+    row.appendChild(person);
+    PEOPLE_STAGES.forEach((s) => {
+      totals[s.key].stories.push(...p[s.key].stories);
+      totals[s.key].subtasks.push(...p[s.key].subtasks);
+      row.appendChild(buildPeopleCell_(s, p[s.key], maxByStage[s.key], p.name));
+    });
+    table.appendChild(row);
+  });
+
+  const foot = el_('div', 'ps-row ps-total');
+  foot.appendChild(el_('div', 'ps-person ps-total-label', 'Total'));
+  PEOPLE_STAGES.forEach((s) => foot.appendChild(buildPeopleCell_(s, totals[s.key], 0, 'Total')));
+  table.appendChild(foot);
+
+  container.appendChild(table);
+}
+
+// Célula de uma etapa: "X histórias  Y subtarefas", a barrinha dividida
+// (histórias na cor da pessoa, subtarefas na mesma cor mais clara) e o
+// tooltip com os itens.
+function buildPeopleCell_(stage, items, max, name) {
+  const nStories = items.stories.length;
+  const nSubs = items.subtasks.length;
+  const cell = el_('div', 'ps-cell' + (nStories + nSubs === 0 ? ' is-empty' : ''));
+  cell.dataset.stage = stage.label;
+
+  const nums = el_('div', 'ps-nums');
+  const part = (n, one, many, cls) => {
+    const span = el_('span', 'ps-part ' + cls + (n === 0 ? ' is-zero' : ''));
+    span.appendChild(el_('b', null, String(n)));
+    span.appendChild(document.createTextNode(' ' + (n === 1 ? one : many)));
+    return span;
+  };
+  nums.appendChild(part(nStories, 'história', 'histórias', 'is-story'));
+  nums.appendChild(part(nSubs, 'subtarefa', 'subtarefas', 'is-sub'));
+  cell.appendChild(nums);
+
+  if (max) {
+    const bar = el_('div', 'ps-bar');
+    const storyBar = el_('span', 'ps-bar-story');
+    storyBar.style.width = (nStories / max) * 100 + '%';
+    const subBar = el_('span', 'ps-bar-sub');
+    subBar.style.width = (nSubs / max) * 100 + '%';
+    if (nStories) subBar.style.marginLeft = '2px';
+    bar.appendChild(storyBar);
+    bar.appendChild(subBar);
+    cell.appendChild(bar);
+  }
+
+  if (nStories + nSubs > 0) {
+    const lines = [name + ' · ' + stage.label + ' (' + stage.desc + ')'];
+    if (nStories) lines.push('', 'Histórias: ' + nStories, ...buildTooltipItemLines_(items.stories, 8));
+    if (nSubs) lines.push('', 'Subtarefas: ' + nSubs, ...buildTooltipItemLines_(items.subtasks, 8));
+    attachVizTooltip_(cell, lines.join('\n'));
+  }
+  return cell;
 }
 
 function setStatTiles_(values) {
