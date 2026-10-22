@@ -2324,6 +2324,9 @@ function fetchAndParseMonthEntries_(token, pageId, pageTitle) {
         var activities = cellToActivities_(cell);
         if (!activities.length) return;
 
+        // Cada célula é um horário: conta a hora uma vez só, mesmo com várias
+        // atividades dentro dela (as demais entram só com o texto).
+        var cellCounted = false;
         activities.forEach(function (act) {
           var upper = act.text.replace(/[()\[\]{}]/g, '').trim().toUpperCase(); // "(HTC)" também conta como só a tag
           if (HOURS_CONFIG.EXCLUDE_ROW_TAGS.indexOf(upper) !== -1) return; // atividade inteira é só a tag HTPC/HTC
@@ -2339,8 +2342,9 @@ function fetchAndParseMonthEntries_(token, pageId, pageTitle) {
           entries.push({
             dateObj: dateObj,
             activity: cleanActivity,
-            hours: (rowDurationHours !== null) ? rowDurationHours : null
+            hours: cellCounted ? 0 : ((rowDurationHours !== null) ? rowDurationHours : 1)
           });
+          cellCounted = true;
         });
       });
     });
