@@ -741,7 +741,7 @@ function buildAccessRowCells_(entry, layout) {
 // Cria uma linha nova na tabela de usuários.
 async function createAccessRow_(tableId, layout, entry) {
   await notionFetch_(`/blocks/${tableId}/children`, {
-    method: 'POST',
+    method: 'PATCH', // "Append block children" do Notion é PATCH, não POST
     body: JSON.stringify({
       children: [{ object: 'block', type: 'table_row', table_row: { cells: buildAccessRowCells_(entry, layout) } }]
     })
