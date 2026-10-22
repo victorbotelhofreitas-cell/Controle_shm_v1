@@ -2643,7 +2643,10 @@ function consolidateByDay_(entries) {
   });
   return order
     .map(function (key) {
-      return { dateObj: byDay[key].dateObj, activity: byDay[key].activities.join(' • '), hours: byDay[key].hours };
+      // Bolinha no início de cada atividade, marcando onde começa cada item; o
+      // traço que abre o texto no Notion ("-SHM / ...") sai, pra não repetir marcador.
+      var items = byDay[key].activities.map(function (a) { return '• ' + a.replace(/^[-–]s*/, ''); });
+      return { dateObj: byDay[key].dateObj, activity: items.join(' '), hours: byDay[key].hours };
     })
     .sort(function (a, b) { return a.dateObj - b.dateObj; });
 }
