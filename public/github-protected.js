@@ -1795,16 +1795,18 @@ var HOURS_CONFIG = {
   TITLE_FONT_SIZE: 20,          // Impact 20pt, sem negrito
   UNDERLINE_X: 39.6, UNDERLINE_Y: 75.6, UNDERLINE_W: 86.4, UNDERLINE_WEIGHT: 2.25,
   PILL_Y: 10.8, PILL_W: 158.4, PILL_H: 39.6, PILL_FONT_SIZE: 9,
-  // Borda direita comum do card MES/ANO e da tabela: 960 - 31.2 = 928.8.
+  // Borda direita do card MES/ANO: 960 - 31.2 = 928.8.
   RIGHT_MARGIN: 31.2,
   TABLE_LEFT: 36,
   TABLE_TOP: 100.4,
-  // Larguras de coluna (pt): Semana/Data/Horas iguais ao mês 9; "Nome da
-  // Atividade" absorve TODO o espaço restante até a borda direita (folga
-  // grande pra descrições longas).
-  COL_WIDTH_SEMANA: 89.1,
-  COL_WIDTH_DATA: 61.7,
-  COL_WIDTH_HORAS: 54.9
+  // Larguras de coluna (pt) idênticas às da tabela do mês 9 (lidas da
+  // apresentação: 1132100 / 783775 / 7837825 / 696675 EMU). A tabela tem a
+  // soma delas (~822,9pt) e termina antes da borda do card MES/ANO, igual ao
+  // mês 9.
+  COL_WIDTH_SEMANA: 89.14,
+  COL_WIDTH_DATA: 61.71,
+  COL_WIDTH_ATIVIDADE: 617.15,
+  COL_WIDTH_HORAS: 54.86
 };
 
 /**
@@ -2891,20 +2893,14 @@ function buildHoursSlides_(monthTitle, weeks) {
 
     var numRows = rowsData.length;
     var numCols = 4;
-    // A tabela inteira se estica até a borda direita útil do slide — mesmo
-    // limite direito (pageWidth - RIGHT_MARGIN) da pill MÊS/ANO acima dela.
-    var tableLeft = HOURS_CONFIG.TABLE_LEFT, tableTop = HOURS_CONFIG.TABLE_TOP;
-    var tableRight = pageWidth - HOURS_CONFIG.RIGHT_MARGIN;
-    var tableWidth = tableRight - tableLeft;
-    var table = slide.insertTable(numRows, numCols, tableLeft, tableTop, tableWidth, 1);
-
-    // Redistribui as larguras das colunas: Semana/Data/Horas compactas (só o
-    // necessário pro conteúdo), "Nome da Atividade" absorve todo o espaço
-    // sobrando, esticando a coluna até a borda direita da tabela.
+    // Colunas com as larguras do mês 9; a tabela tem a soma delas.
     var colWSemana = HOURS_CONFIG.COL_WIDTH_SEMANA;
     var colWData = HOURS_CONFIG.COL_WIDTH_DATA;
+    var colWAtividade = HOURS_CONFIG.COL_WIDTH_ATIVIDADE;
     var colWHoras = HOURS_CONFIG.COL_WIDTH_HORAS;
-    var colWAtividade = tableWidth - colWSemana - colWData - colWHoras;
+    var tableLeft = HOURS_CONFIG.TABLE_LEFT, tableTop = HOURS_CONFIG.TABLE_TOP;
+    var tableWidth = colWSemana + colWData + colWAtividade + colWHoras;
+    var table = slide.insertTable(numRows, numCols, tableLeft, tableTop, tableWidth, 1);
 
     for (var r = 0; r < numRows; r++) {
       for (var c = 0; c < numCols; c++) {
