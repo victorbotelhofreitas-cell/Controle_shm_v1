@@ -1038,7 +1038,11 @@ app.post('/api/export-snap', requireAdmin_, async (req, res) => {
 // (só devolve se access_type=offline + prompt=consent, já inclusos abaixo).
 // ---------------------------------------------------------------------------
 const GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
-const TLDV_LINK_REGEX = /https?:\/\/(?:www\.)?tldv\.io\/\S+/i;
+// Link da gravação: só o da reunião (tldv.io/app/meetings/<id>…); o link
+// genérico do rodapé (tldv.io/pt-br/) não serve.
+const TLDV_MEETING_LINK_REGEX = /https?:\/\/(?:www\.)?tldv\.io\/app\/meetings\/([A-Za-z0-9]+)[^\s"'<>)\]]*/i;
+// E-mails do tl;dv que não são gravação de reunião.
+const TLDV_IGNORED_SUBJECT_REGEX = /permiss[aã]o|relat[oó]rio semanal|sinalizado/i;
 
 function gmailOAuthClient_() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -1111,6 +1115,23 @@ function decodeBase64Url_(data) {
   return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 }
 
+// Junta o texto de todas as partes do e-mail (text/plain e text/html), para
+// achar o link da reunião mesmo quando ele só aparece no HTML.
+function extractGmailAllText_(payload) {
+  if (!payload) return '';
+  let text = payload.body && payload.body.data ? decodeBase64Url_(payload.body.data) : '';
+  (payload.parts || []).forEach((part) => { text += '\n' + extractGmailAllText_(part); });
+  return text.replace(/&amp;/g, '&');
+}
+
+// Nome da reunião: o que vem entre aspas no assunto ("Notas e respostas por
+// IA da reunião \"SHM / Frente de Marketing\" estão prontas"); sem aspas, o
+// assunto inteiro.
+function tldvMeetingTitle_(subject) {
+  const quoted = (subject || '').match(/["“]([^"”]+)["”]/);
+  return (quoted ? quoted[1] : subject || '(sem assunto)').trim();
+}
+
 // Busca recursivamente a primeira parte text/plain do corpo de uma mensagem
 // Gmail (payload.parts aninhado) — cai para o snippet se não achar nenhuma.
 function extractGmailBodyText_(payload) {
@@ -1165,19 +1186,18 @@ app.post('/api/sync-gravacoes', requireAdmin_, async (req, res) => {
         const headers = (msgResp.data.payload && msgResp.data.payload.headers) || [];
         const subject = gmailHeaderValue_(headers, 'Subject') || '(sem assunto)';
         const dateHeader = gmailHeaderValue_(headers, 'Date');
-        const bodyText = extractGmailBodyText_(msgResp.data.payload) || msgResp.data.snippet || '';
-        const linkMatch = bodyText.match(TLDV_LINK_REGEX) || subject.match(TLDV_LINK_REGEX);
-        if (!linkMatch) {
-          emailsComErro.push(subject + ' (link tl;dv não encontrado no corpo)');
-          continue;
-        }
+        if (TLDV_IGNORED_SUBJECT_REGEX.test(subject)) continue; // não é gravação
+        const allText = extractGmailAllText_(msgResp.data.payload) + '\n' + (msgResp.data.snippet || '');
+        const linkMatch = allText.match(TLDV_MEETING_LINK_REGEX);
+        if (!linkMatch) continue; // e-mail do tl;dv sem link de reunião (aviso, propaganda etc.)
         const link = linkMatch[0];
+        const meetingId = linkMatch[1];
         const emailDate = dateHeader ? new Date(dateHeader) : new Date();
         const dd = String(emailDate.getDate()).padStart(2, '0');
         const mm = String(emailDate.getMonth() + 1).padStart(2, '0');
         const yyyy = emailDate.getFullYear();
         const dataFormatada = isNaN(emailDate.getTime()) ? '00000000' : (dd + mm + yyyy);
-        videosEncontrados.push({ data: dataFormatada, titulo: subject.trim(), link });
+        videosEncontrados.push({ data: dataFormatada, titulo: tldvMeetingTitle_(subject), link, meetingId });
       } catch (parseErr) {
         emailsComErro.push((m.id || 'e-mail desconhecido') + ' (' + parseErr.message + ')');
       }
@@ -1190,8 +1210,17 @@ app.post('/api/sync-gravacoes', requireAdmin_, async (req, res) => {
       return res.json({ ok: true, added: 0, message: msg });
     }
 
+    // Uma linha por reunião (o mesmo id pode vir em mais de um e-mail), só as
+    // que ainda não estão na página, da mais antiga para a mais nova.
     const notionTextAtual = await fetchNotionPageText_(NOTION_GRAVACOES_PAGE_ID);
-    const videosNovos = videosEncontrados.filter((v) => notionTextAtual.indexOf(v.link) === -1 && notionTextAtual.indexOf(v.titulo) === -1);
+    const vistos = new Set();
+    const videosNovos = videosEncontrados
+      .filter((v) => {
+        if (vistos.has(v.meetingId) || notionTextAtual.indexOf(v.meetingId) !== -1) return false;
+        vistos.add(v.meetingId);
+        return true;
+      })
+      .sort((a, b) => a.data.slice(4) + a.data.slice(2, 4) + a.data.slice(0, 2) < b.data.slice(4) + b.data.slice(2, 4) + b.data.slice(0, 2) ? -1 : 1);
 
     if (!videosNovos.length) {
       return res.json({ ok: true, added: 0, message: 'Nenhum vídeo novo encontrado — tudo já está sincronizado.' });
@@ -1202,7 +1231,14 @@ app.post('/api/sync-gravacoes', requireAdmin_, async (req, res) => {
       ...videosNovos.map((v) => ({
         object: 'block',
         type: 'paragraph',
-        paragraph: { rich_text: [{ type: 'text', text: { content: `${v.data} / ${v.titulo} / ${v.link}` } }] }
+        // Mesmo padrão da página: "DDMMAAAA / Nome da reunião / link" com o
+        // link clicável.
+        paragraph: {
+          rich_text: [
+            { type: 'text', text: { content: `${v.data} / ${v.titulo} / ` } },
+            { type: 'text', text: { content: v.link, link: { url: v.link } } }
+          ]
+        }
       }))
     ];
     for (let i = 0; i < newBlocks.length; i += 100) {
