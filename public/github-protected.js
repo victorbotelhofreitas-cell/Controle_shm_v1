@@ -300,6 +300,10 @@ function wireAccessAddPanel_() {
 
   const save = async () => {
     const email = (emailInput.value || '').trim().toLowerCase();
+    const nameInput = document.getElementById('accessNameInput');
+    const roleSelect = document.getElementById('accessRoleSelect');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const role = roleSelect && roleSelect.value === 'administrador' ? 'administrador' : 'comum';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       status.textContent = 'Digite um e-mail válido.';
       status.className = 'sync-status is-error';
@@ -312,13 +316,15 @@ function wireAccessAddPanel_() {
       const res = await fetch('/api/access/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, name, role })
       });
       const payload = await res.json().catch(() => null);
       if (res.ok && payload && payload.ok) {
-        status.textContent = 'Salvo! ' + email + ' já pode entrar com a conta Google.';
+        status.textContent = 'Salvo! ' + (name || email) + ' já pode entrar com a conta Google, como ' + (role === 'administrador' ? 'administrador' : 'usuário comum') + '.';
         status.className = 'sync-status is-ok';
         emailInput.value = '';
+        if (nameInput) nameInput.value = '';
+        if (roleSelect) roleSelect.value = 'comum';
         await loadAcessoList_();
       } else {
         status.textContent = errorWithDetail_(payload, 'Não foi possível salvar.');

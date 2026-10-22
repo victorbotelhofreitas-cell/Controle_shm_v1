@@ -344,9 +344,14 @@
 
         <div class="card">
           <span class="filename">Adicionar usuário</span>
-          <p class="subtitle access-add-hint">Entra como usuário comum. O nome e o tipo de acesso podem ser ajustados direto no Notion.</p>
+          <p class="subtitle access-add-hint">Cria uma linha nova na tabela do Notion "Controle SHM / Acessos".</p>
           <div class="access-form-row">
+            <input class="access-email-input access-name-input" type="text" id="accessNameInput" placeholder="nome da pessoa" autocomplete="off">
             <input class="access-email-input" type="email" id="accessEmailInput" placeholder="e-mail Google da pessoa" autocomplete="off">
+            <select class="access-role-select" id="accessRoleSelect" aria-label="Tipo de acesso">
+              <option value="comum">Comum</option>
+              <option value="administrador">Administrador</option>
+            </select>
             <button class="access-save-btn" type="button" id="accessSaveBtn">Salvar</button>
           </div>
           <div class="sync-status" id="accessSaveStatus"></div>

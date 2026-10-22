@@ -943,8 +943,7 @@ app.get('/api/access/list', requireAdmin_, async (req, res) => {
 });
 
 // Adicionar usuário: cria uma linha nova na tabela "Lista de usuários do
-// sistema" com o e-mail e o tipo Comum. O nome e o tipo podem ser ajustados
-// direto no Notion depois.
+// sistema" com nome, e-mail e tipo de acesso escolhidos no painel.
 // Erro ao gravar na tabela de usuários: a mensagem já leva o motivo devolvido
 // pelo Notion, para aparecer na tela mesmo sem recarregar a página.
 function accessWriteError_(res, err, action) {
@@ -963,11 +962,13 @@ app.post('/api/access/add', requireAdmin_, async (req, res) => {
     if (raw.entries.some((e) => e.email === email)) {
       return res.status(409).json({ ok: false, error: email + ' já está cadastrado.' });
     }
-    // Nome provisório = parte do e-mail antes do @ (nenhuma célula vai vazia);
-    // dá para trocar pelo nome real direto no Notion.
-    await createAccessRow_(raw.tableId, raw.layout, { email, name: email.split('@')[0], role: 'comum' });
+    // Nome digitado no painel; sem nome, usa a parte do e-mail antes do @
+    // (nenhuma célula vai vazia). Tipo: Comum, a não ser que venha Administrador.
+    const name = String((req.body || {}).name || '').trim().slice(0, 120) || email.split('@')[0];
+    const role = (req.body || {}).role === 'administrador' ? 'administrador' : 'comum';
+    await createAccessRow_(raw.tableId, raw.layout, { email, name, role });
     invalidateAccessListCache_();
-    res.json({ ok: true, email, role: 'comum' });
+    res.json({ ok: true, email, name, role });
   } catch (err) {
     console.error('[api/access/add] erro:', err.message);
     accessWriteError_(res, err, 'salvar');

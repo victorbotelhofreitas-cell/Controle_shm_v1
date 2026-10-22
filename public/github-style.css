@@ -1525,3 +1525,4 @@ table.site-table.access-table { min-width: 0; }
 .access-popup-detail:empty { display: none; }
 @keyframes access-popup-in { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
 @media (prefers-reduced-motion: reduce) { .access-popup { animation: none; } }
+#section-acesso .access-form-row .access-name-input { flex: 1 1 180px; }
