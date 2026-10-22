@@ -374,8 +374,8 @@ table.site-table a:hover { text-decoration: underline; }
     grid-template-columns: auto 1fr auto auto;
     grid-template-areas:
       "date status status prio"
-      "summary summary summary summary"
       "epic epic epic epic"
+      "summary summary summary summary"
       "resp resp clt lt"
       "plano plano plano plano"
       "risco risco risco risco";
@@ -405,7 +405,7 @@ table.site-table a:hover { text-decoration: underline; }
     font-weight: 600;
   }
   .kanban-card-cell.cell-plano::before { display: block; }
-  /* Etiquetas para saber o que é cada linha do card: Épico (na cor da
+  /* Etiquetas para saber o que é cada linha do card: Frente (épico, na cor da
      frente, no lugar da bolinha), História e Subtarefa. */
   .kanban-card-cell.cell-summary::before,
   .kanban-card-cell.epic-cell.cell-epic::before {
@@ -425,7 +425,7 @@ table.site-table a:hover { text-decoration: underline; }
   .kanban-card-cell.cell-summary::before { content: "História"; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); }
   .kanban-card.is-subtask .kanban-card-cell.cell-summary::before { content: "Subtarefa"; }
   .kanban-card-cell.epic-cell.cell-epic::before {
-    content: "Épico";
+    content: "Frente";
     background: color-mix(in srgb, var(--epic-color, var(--border)) 16%, transparent);
     color: color-mix(in srgb, var(--epic-color, var(--text-muted)) 70%, var(--text));
   }
