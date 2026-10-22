@@ -1789,6 +1789,9 @@ var HOURS_CONFIG = {
   // o usuário pedir: todo relatório mensal deve sair idêntico a esse padrão.
   EYEBROW_X: 39.6, EYEBROW_Y: 23, EYEBROW_W: 360, EYEBROW_H: 17.3, EYEBROW_FONT_SIZE: 12,
   TITLE_X: 36, TITLE_Y: 39.6, TITLE_W: 648, TITLE_H: 36,
+  // Margem interna padrão das formas do Slides: descontada do X do "CF5" e do
+  // título para o texto começar no mesmo ponto do relatório do mês 9.
+  TEXT_BOX_INSET: 7.2,
   TITLE_FONT_SIZE: 20,          // Impact 20pt, sem negrito
   UNDERLINE_X: 39.6, UNDERLINE_Y: 75.6, UNDERLINE_W: 86.4, UNDERLINE_WEIGHT: 2.25,
   PILL_Y: 10.8, PILL_W: 158.4, PILL_H: 39.6, PILL_FONT_SIZE: 9,
@@ -2750,10 +2753,10 @@ function drawHoursHeader_(slide, monthLabel, pageWidth) {
   }
 
   // Eyebrow "CF5": Calibri 12 bold vermelho.
-  addPlainText_(C.EYEBROW_TEXT, C.EYEBROW_X, C.EYEBROW_Y, C.EYEBROW_W, C.EYEBROW_H, C.EYEBROW_FONT_SIZE, true, C.EYEBROW_COLOR, C.FONT_FAMILY);
+  addPlainText_(C.EYEBROW_TEXT, C.EYEBROW_X - C.TEXT_BOX_INSET, C.EYEBROW_Y, C.EYEBROW_W, C.EYEBROW_H, C.EYEBROW_FONT_SIZE, true, C.EYEBROW_COLOR, C.FONT_FAMILY);
 
   // Título: Impact 20pt SEM negrito.
-  addPlainText_(C.TITLE_TEXT, C.TITLE_X, C.TITLE_Y, C.TITLE_W, C.TITLE_H, C.TITLE_FONT_SIZE, false, C.TITLE_COLOR, C.TITLE_FONT_FAMILY);
+  addPlainText_(C.TITLE_TEXT, C.TITLE_X - C.TEXT_BOX_INSET, C.TITLE_Y, C.TITLE_W, C.TITLE_H, C.TITLE_FONT_SIZE, false, C.TITLE_COLOR, C.TITLE_FONT_FAMILY);
 
   // Barra vermelha sob o título: linha reta de 2,25pt, 86,4pt de largura.
   var underline = slide.insertLine(
@@ -2791,35 +2794,43 @@ function monthLabelFromTitle_(monthTitle) {
   return ('0' + (parsed.month + 1)).slice(-2) + '/' + parsed.year;
 }
 /**
- * Define a largura de cada coluna de uma tabela nativa do Slides.
- * IMPORTANTE: o serviço básico SlidesApp NÃO tem nenhum método pra isso —
- * nem TableColumn.setWidth() nem Table.setColumnWidth() existem nessa API
- * (erro real visto: "table.getColumn(...).setWidth is not a function").
- * A única forma de redimensionar colunas é pela API avançada do Slides
- * (serviço "Slides API", Resources/Serviços -> Serviços avançados do Google
- * no editor do Apps Script) via Slides.Presentations.batchUpdate com
- * updateTableColumnProperties. Se esse serviço avançado não estiver
- * habilitado no projeto, cai no catch e a tabela fica com colunas de largura
- * igual (comportamento padrão do insertTable) em vez de travar a geração do
- * relatório inteiro — funciona, só não fica com a largura customizada até o
- * serviço ser habilitado (ver "Como usar" no painel Controle SHM).
+ * Largura das colunas e células mescladas (coluna Semana uma vez por semana,
+ * e Data + Nome da Atividade na linha de total). O SlidesApp não tem método
+ * para nenhuma das duas coisas (TableCell não tem merge(), daí o erro
+ * "topCell.merge is not a function"); só a API avançada do Slides faz isso,
+ * via Slides.Presentations.batchUpdate com updateTableColumnProperties e
+ * mergeTableCells. Precisa do serviço avançado "Slides API" ligado no editor
+ * do Apps Script (Serviços, +, Slides API). Sem ele, a tabela sai com colunas
+ * iguais e sem mesclar, mas o relatório é gerado do mesmo jeito.
  */
-function setTableColumnWidths_(table, widths) {
-  try {
-    var tableId = table.getObjectId();
-    var requests = widths.map(function (w, i) {
-      return {
-        updateTableColumnProperties: {
-          objectId: tableId,
-          columnIndices: [i],
-          tableColumnProperties: { columnWidth: { magnitude: w, unit: 'PT' } },
-          fields: 'columnWidth'
-        }
-      };
+function tableLayoutRequests_(tableId, widths, merges) {
+  var requests = widths.map(function (w, i) {
+    return {
+      updateTableColumnProperties: {
+        objectId: tableId,
+        columnIndices: [i],
+        tableColumnProperties: { columnWidth: { magnitude: w, unit: 'PT' } },
+        fields: 'columnWidth'
+      }
+    };
+  });
+  merges.forEach(function (m) {
+    requests.push({
+      mergeTableCells: {
+        objectId: tableId,
+        tableRange: { location: { rowIndex: m.row, columnIndex: m.col }, rowSpan: m.rowSpan, columnSpan: m.colSpan }
+      }
     });
+  });
+  return requests;
+}
+
+function applyTableLayouts_(requests) {
+  if (!requests.length) return;
+  try {
     Slides.Presentations.batchUpdate({ requests: requests }, HOURS_CONFIG.PRESENTATION_ID);
   } catch (e) {
-    Logger.log('Não foi possível customizar a largura das colunas (serviço avançado "Slides API" não habilitado neste projeto): ' + e);
+    Logger.log('Não foi possível ajustar larguras/mesclar células (ligue o serviço avançado "Slides API" neste projeto): ' + e);
   }
 }
 
@@ -2827,17 +2838,15 @@ function buildHoursSlides_(monthTitle, weeks) {
   var presentation = SlidesApp.openById(HOURS_CONFIG.PRESENTATION_ID);
   var pageWidth = presentation.getPageWidth();
 
-  // Remove apenas slides gerados por execuções anteriores deste script
-  // (marcados internamente), nunca mexe em slides que o usuário tenha
-  // criado manualmente na apresentação. Precisa acontecer ANTES de criar os
-  // novos, pra não empilhar relatórios antigos no início a cada execução.
+  var monthLabel = monthLabelFromTitle_(monthTitle);
+
+  // Rodar de novo o mesmo mês substitui só os slides daquele mês (gerados por
+  // este script). Relatórios de outros meses e slides feitos à mão ficam.
   presentation.getSlides().forEach(function (slide) {
     try {
-      if (slideHasHoursMarker_(slide)) slide.remove();
+      if (hoursSlideMonth_(slide) === monthLabel) slide.remove();
     } catch (e) { /* slide sem shapes, ignora */ }
   });
-
-  var monthLabel = monthLabelFromTitle_(monthTitle);
 
   // Agrupa semanas em blocos de MAX_WEEKS_PER_SLIDE.
   var slideGroups = [];
@@ -2856,11 +2865,12 @@ function buildHoursSlides_(monthTitle, weeks) {
   var totalValue = totalHours * HOURS_CONFIG.HOUR_VALUE;
 
   var createdSlides = [];
+  var layoutRequests = [];
 
   slideGroups.forEach(function (weekGroup, groupIdx) {
     var isLastSlide = groupIdx === slideGroups.length - 1;
     var slide = appendBlankSlide_(presentation);
-    tagSlideAsHoursReport_(slide);
+    tagSlideAsHoursReport_(slide, monthLabel);
     createdSlides.push(slide);
     slide.getBackground().setSolidFill(HOURS_CONFIG.SLIDE_BG);
 
@@ -2869,7 +2879,7 @@ function buildHoursSlides_(monthTitle, weeks) {
     var rowsData = [['Semana', 'Data', 'Nome da Atividade', 'Horas']];
     weekGroup.forEach(function (week) {
       week.days.forEach(function (day, dayIdx) {
-        rowsData.push([String(week.weekNum), formatDdMm_(day.dateObj), day.activity, formatHours_(day.hours)]);
+        rowsData.push([dayIdx === 0 ? String(week.weekNum) : '', formatDdMm_(day.dateObj), day.activity, formatHours_(day.hours)]);
       });
     });
 
@@ -2925,35 +2935,18 @@ function buildHoursSlides_(monthTitle, weeks) {
       }
     }
 
-    // Mescla a linha de total: só "Data" + "Nome da Atividade" viram uma
-    // célula (texto "Valor total: R$ X" alinhado à direita); "Semana"
-    // mantém "TOTAL" sozinho, "Horas" mantém o total de horas sozinho.
-    if (totalRowIdx !== -1) {
-      table.getCell(totalRowIdx, 1).merge(table.getCell(totalRowIdx, 2));
-    }
-
-    // Mescla verticalmente a coluna "Semana" quando o valor repete (1 célula
-    // mesclada mostrando o número da semana uma única vez por grupo).
+    // Mesclas e larguras ficam para o fim (applyTableLayouts_), numa chamada
+    // só da Slides API, depois que tudo do SlidesApp foi gravado.
+    var merges = [];
+    if (totalRowIdx !== -1) merges.push({ row: totalRowIdx, col: 1, rowSpan: 1, colSpan: 2 });
     var rowCursor = 1; // linha 0 é cabeçalho
     weekGroup.forEach(function (week) {
       var span = week.days.length;
-      if (span > 1) {
-        var topCell = table.getCell(rowCursor, 0);
-        for (var k = 1; k < span; k++) {
-          topCell.merge(table.getCell(rowCursor + k, 0));
-        }
-      }
+      if (span > 1) merges.push({ row: rowCursor, col: 0, rowSpan: span, colSpan: 1 });
       rowCursor += span;
     });
-
-    // Largura das colunas por último, DEPOIS de preencher texto e mesclar
-    // células: setTableColumnWidths_ usa a API avançada do Slides
-    // (Slides.Presentations.batchUpdate), que grava direto na apresentação
-    // por fora do objeto SlidesApp em memória — chamando isso ANTES dos
-    // merges, o cache de células do SlidesApp ficava desatualizado e os
-    // merge() seguintes silenciosamente não faziam efeito nenhum (bug real
-    // visto: coluna "Semana" nunca mesclava, mesmo com o código certo).
-    setTableColumnWidths_(table, [colWSemana, colWData, colWAtividade, colWHoras]);
+    layoutRequests = layoutRequests.concat(
+      tableLayoutRequests_(table.getObjectId(), [colWSemana, colWData, colWAtividade, colWHoras], merges));
 
     // A tabela nativa do Google Slides já vem com bordas finas por padrão
     // (tom cinza-claro), compatível com o restante do sistema — sem precisar
@@ -2972,24 +2965,32 @@ function buildHoursSlides_(monthTitle, weeks) {
   for (var m = createdSlides.length - 1; m >= 0; m--) {
     createdSlides[m].move(0);
   }
+
+  presentation.saveAndClose();
+  applyTableLayouts_(layoutRequests);
 }
 
-var HOURS_SLIDE_MARKER_KEY = 'HOURS_REPORT_SLIDE';
+var HOURS_SLIDE_MARKER_KEY = 'HOURS_REPORT_SLIDES_BY_MONTH';
 
-function tagSlideAsHoursReport_(slide) {
-  // Marca o slide internamente (via registro de objectId em Document
-  // Properties) pra próximas execuções saberem que foi gerado por este
-  // script e podem ser substituídas sem mexer em slides manuais.
-  var props = PropertiesService.getDocumentProperties();
-  var ids = JSON.parse(props.getProperty(HOURS_SLIDE_MARKER_KEY) || '[]');
-  ids.push(slide.getObjectId());
-  props.setProperty(HOURS_SLIDE_MARKER_KEY, JSON.stringify(ids));
+// Guarda, nas Document Properties, de qual mês é cada slide gerado por este
+// script ({ objectId: "MM/AAAA" }), para rodar de novo um mês substituir só
+// os slides dele.
+function readHoursSlideMap_() {
+  try {
+    return JSON.parse(PropertiesService.getDocumentProperties().getProperty(HOURS_SLIDE_MARKER_KEY) || '{}');
+  } catch (e) {
+    return {};
+  }
 }
 
-function slideHasHoursMarker_(slide) {
-  var props = PropertiesService.getDocumentProperties();
-  var ids = JSON.parse(props.getProperty(HOURS_SLIDE_MARKER_KEY) || '[]');
-  return ids.indexOf(slide.getObjectId()) !== -1;
+function tagSlideAsHoursReport_(slide, monthLabel) {
+  var map = readHoursSlideMap_();
+  map[slide.getObjectId()] = monthLabel;
+  PropertiesService.getDocumentProperties().setProperty(HOURS_SLIDE_MARKER_KEY, JSON.stringify(map));
+}
+
+function hoursSlideMonth_(slide) {
+  return readHoursSlideMap_()[slide.getObjectId()] || null;
 }
 
 function formatDdMm_(dateObj) {
