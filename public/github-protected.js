@@ -2906,6 +2906,13 @@ function buildHoursSlides_(monthTitle, weeks) {
       for (var c = 0; c < numCols; c++) {
         var cell = table.getCell(r, c);
         var text = rowsData[r][c];
+        // Célula vazia (Semana nos demais dias, Data na linha TOTAL) só ganha
+        // o fundo: o Slides dá "The object ... has no text" ao estilizar
+        // texto vazio.
+        if (r === 0) cell.getFill().setSolidFill(HOURS_CONFIG.HEADER_FILL);
+        else if (r === totalRowIdx) cell.getFill().setSolidFill(HOURS_CONFIG.TOTAL_FILL);
+        else cell.getFill().setSolidFill((r % 2 === 0) ? HOURS_CONFIG.ROW_FILL_EVEN : HOURS_CONFIG.ROW_FILL_ODD);
+        if (!text) continue;
         cell.getText().setText(text);
         var style = cell.getText().getTextStyle();
         try { style.setFontFamily(HOURS_CONFIG.FONT_FAMILY); } catch (eFont) { /* ignora */ }
@@ -2913,14 +2920,11 @@ function buildHoursSlides_(monthTitle, weeks) {
         style.setFontSize(r === 0 ? HOURS_CONFIG.HEADER_FONT_SIZE : HOURS_CONFIG.FONT_SIZE);
         style.setBold(r === 0 || r === totalRowIdx);
         if (r === 0) {
-          cell.getFill().setSolidFill(HOURS_CONFIG.HEADER_FILL);
           style.setForegroundColor(HOURS_CONFIG.HEADER_TEXT);
         } else if (r === totalRowIdx) {
-          cell.getFill().setSolidFill(HOURS_CONFIG.TOTAL_FILL);
           style.setForegroundColor(HOURS_CONFIG.TOTAL_TEXT);
           if (c === 2) cell.getText().getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.END);
         } else {
-          cell.getFill().setSolidFill((r % 2 === 0) ? HOURS_CONFIG.ROW_FILL_EVEN : HOURS_CONFIG.ROW_FILL_ODD);
           // Decisão de design (ver relatório final): o exemplo de referência
           // mostrava o texto da atividade em cores variando por linha, mas
           // sem uma regra clara de quando usar qual cor — pra não ficar
