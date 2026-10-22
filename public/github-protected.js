@@ -2323,11 +2323,11 @@ function fetchAndParseMonthEntries_(token, pageId, pageTitle) {
         if (!activities.length) return;
 
         activities.forEach(function (act) {
-          var upper = act.text.trim().toUpperCase();
+          var upper = act.text.replace(/[()\[\]{}]/g, '').trim().toUpperCase(); // "(HTC)" também conta como só a tag
           if (HOURS_CONFIG.EXCLUDE_ROW_TAGS.indexOf(upper) !== -1) return; // atividade inteira é só a tag HTPC/HTC
           if (act.hasStrikethrough) return; // atividade tachada
 
-          var cleanActivity = act.text.replace(HOURS_CONFIG.INTERNAL_MARKERS_REGEX, '').replace(/\s{2,}/g, ' ').trim();
+          var cleanActivity = act.text.replace(HOURS_CONFIG.INTERNAL_MARKERS_REGEX, '').replace(/\(\s*\)|\[\s*\]|\{\s*\}/g, '').replace(/\s{2,}/g, ' ').trim();
           if (!cleanActivity) return;
 
           var dateObj = new Date(col.year, col.month, col.day);
@@ -2564,7 +2564,7 @@ function parseEntriesLegacyFlat_(rawRows, pageTitle) {
 
     if (!dateCell.text || !activityText) { excludedEmpty++; return; } // linha vazia/mal formada
 
-    var typeUpper = typeCell.text.trim().toUpperCase();
+    var typeUpper = typeCell.text.replace(/[()\[\]{}]/g, '').trim().toUpperCase();
     var isTaggedRow = HOURS_CONFIG.EXCLUDE_ROW_TAGS.indexOf(typeUpper) !== -1;
     if (isTaggedRow) { excludedByTag++; return; }
     if (anyStrike) { excludedByStrike++; return; }
@@ -2575,7 +2575,7 @@ function parseEntriesLegacyFlat_(rawRows, pageTitle) {
     // Limpa menções internas a HTPC/HTC/hora extra NO MEIO do texto (linha
     // que não é inteiramente HTPC/HTC mas cita o termo) — cliente final não
     // deve ver essas marcações.
-    var cleanActivity = activityText.replace(HOURS_CONFIG.INTERNAL_MARKERS_REGEX, '').replace(/\s{2,}/g, ' ').trim();
+    var cleanActivity = activityText.replace(HOURS_CONFIG.INTERNAL_MARKERS_REGEX, '').replace(/\(\s*\)|\[\s*\]|\{\s*\}/g, '').replace(/\s{2,}/g, ' ').trim();
     if (!cleanActivity) { excludedEmpty++; return; }
 
     var hours = null;
@@ -2643,7 +2643,7 @@ function consolidateByDay_(entries) {
   });
   return order
     .map(function (key) {
-      return { dateObj: byDay[key].dateObj, activity: byDay[key].activities.join(' ') , hours: byDay[key].hours };
+      return { dateObj: byDay[key].dateObj, activity: byDay[key].activities.join(' • '), hours: byDay[key].hours };
     })
     .sort(function (a, b) { return a.dateObj - b.dateObj; });
 }
