@@ -405,6 +405,31 @@ table.site-table a:hover { text-decoration: underline; }
     font-weight: 600;
   }
   .kanban-card-cell.cell-plano::before { display: block; }
+  /* Etiquetas para saber o que é cada linha do card: Épico (na cor da
+     frente, no lugar da bolinha), História e Subtarefa. */
+  .kanban-card-cell.cell-summary::before,
+  .kanban-card-cell.epic-cell.cell-epic::before {
+    display: inline-block;
+    width: auto;
+    height: auto;
+    margin-right: 7px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    vertical-align: 1px;
+  }
+  .kanban-card-cell.cell-summary::before { content: "História"; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); }
+  .kanban-card.is-subtask .kanban-card-cell.cell-summary::before { content: "Subtarefa"; }
+  .kanban-card-cell.epic-cell.cell-epic::before {
+    content: "Épico";
+    background: color-mix(in srgb, var(--epic-color, var(--border)) 16%, transparent);
+    color: color-mix(in srgb, var(--epic-color, var(--text-muted)) 70%, var(--text));
+  }
+  .kanban-card.is-subtask .kanban-card-cell.cell-epic { display: none; }
 }
 
 /* --- Dashboard de Métricas --- */
