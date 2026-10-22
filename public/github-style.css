@@ -406,7 +406,7 @@ table.site-table a:hover { text-decoration: underline; }
   }
   .kanban-card-cell.cell-plano::before { display: block; }
   /* Etiquetas para saber o que é cada linha do card: Frente (épico, na cor da
-     frente, no lugar da bolinha), História e Subtarefa. */
+     frente, no lugar da bolinha), Atividade e Subtarefa. */
   .kanban-card-cell.cell-summary::before,
   .kanban-card-cell.epic-cell.cell-epic::before {
     display: inline-block;
@@ -422,7 +422,7 @@ table.site-table a:hover { text-decoration: underline; }
     text-transform: uppercase;
     vertical-align: 1px;
   }
-  .kanban-card-cell.cell-summary::before { content: "História"; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); }
+  .kanban-card-cell.cell-summary::before { content: "Atividade"; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); }
   .kanban-card.is-subtask .kanban-card-cell.cell-summary::before { content: "Subtarefa"; }
   .kanban-card-cell.epic-cell.cell-epic::before {
     content: "Frente";
