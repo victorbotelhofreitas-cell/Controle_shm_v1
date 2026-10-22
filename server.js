@@ -945,6 +945,14 @@ app.get('/api/access/list', requireAdmin_, async (req, res) => {
 // Adicionar usuário: cria uma linha nova na tabela "Lista de usuários do
 // sistema" com o e-mail e o tipo Comum. O nome e o tipo podem ser ajustados
 // direto no Notion depois.
+// Erro ao gravar na tabela de usuários: a mensagem já leva o motivo devolvido
+// pelo Notion, para aparecer na tela mesmo sem recarregar a página.
+function accessWriteError_(res, err, action) {
+  const friendly = friendlyNotionError_(err);
+  const reason = err && err.message ? err.message : 'erro desconhecido';
+  res.status(friendly.status).json({ ok: false, error: 'Não foi possível ' + action + ' no Notion. Motivo: ' + reason });
+}
+
 app.post('/api/access/add', requireAdmin_, async (req, res) => {
   try {
     const email = normalizeEmail_((req.body || {}).email);
@@ -962,8 +970,7 @@ app.post('/api/access/add', requireAdmin_, async (req, res) => {
     res.json({ ok: true, email, role: 'comum' });
   } catch (err) {
     console.error('[api/access/add] erro:', err.message);
-    const friendly = friendlyNotionError_(err);
-    res.status(friendly.status).json(Object.assign({ ok: false }, friendly.body));
+    accessWriteError_(res, err, 'salvar');
   }
 });
 
@@ -984,8 +991,7 @@ app.post('/api/access/remove', requireAdmin_, async (req, res) => {
     res.json({ ok: true, email });
   } catch (err) {
     console.error('[api/access/remove] erro:', err.message);
-    const friendly = friendlyNotionError_(err);
-    res.status(friendly.status).json(Object.assign({ ok: false }, friendly.body));
+    accessWriteError_(res, err, 'remover');
   }
 });
 
