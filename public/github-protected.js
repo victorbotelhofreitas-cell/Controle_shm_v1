@@ -1754,6 +1754,8 @@ var HOURS_CONFIG = {
   NOTION_API_BASE: 'https://api.notion.com/v1',
   HOUR_VALUE: 123, // R$ por hora, fixo
   MAX_WEEKS_PER_SLIDE: 2,
+  // Marcador no início de cada atividade do dia (círculo preenchido grande).
+  ITEM_BULLET: '●',
   // Qualquer uma dessas palavras, isolada (linha inteira classificada assim),
   // faz a linha inteira ser excluída do relatório final (hora extra interna,
   // não aparece pro cliente).
@@ -2645,8 +2647,8 @@ function consolidateByDay_(entries) {
     .map(function (key) {
       // Bolinha no início de cada atividade, marcando onde começa cada item; o
       // traço que abre o texto no Notion ("-SHM / ...") sai, pra não repetir marcador.
-      var items = byDay[key].activities.map(function (a) { return '• ' + a.replace(/^[-–]s*/, ''); });
-      return { dateObj: byDay[key].dateObj, activity: items.join(' '), hours: byDay[key].hours };
+      var items = byDay[key].activities.map(function (a) { return HOURS_CONFIG.ITEM_BULLET + '  ' + a.replace(/^[-–]\s*/, ''); });
+      return { dateObj: byDay[key].dateObj, activity: items.join('  '), hours: byDay[key].hours };
     })
     .sort(function (a, b) { return a.dateObj - b.dateObj; });
 }
