@@ -345,9 +345,66 @@ table.site-table a:hover { text-decoration: underline; }
 .kanban-card-cell.priority-cell { justify-content: center; font-size: 10px; gap: 4px; }
 .kanban-card-cell.priority-cell.is-high-priority { background: var(--danger-bg); color: #c0392b; font-weight: 700; }
 
+/* Título, épico e plano de ação usam até 2 linhas antes de cortar; o toque
+   no card (is-open) mostra o texto completo de todas as células. */
+.kanban-card { cursor: pointer; }
+.kanban-card-cell.truncate-cell.cell-summary,
+.kanban-card-cell.truncate-cell.cell-epic,
+.kanban-card-cell.truncate-cell.cell-plano {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+}
+.kanban-card.is-open .kanban-card-cell.truncate-cell {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+.kanban-card.is-open .kanban-card-cell.cell-plano { white-space: pre-line; }
+
+/* Celular/tablet: cada item vira um cartão empilhado. Plano de Ação e Risco
+   Impacto só aparecem com o card aberto. */
 @media (max-width: 900px) {
-  .kanban-row-grid { grid-template-columns: repeat(2, 1fr); }
   .kanban-header-row { display: none; }
+  .kanban-row-grid {
+    grid-template-columns: auto 1fr auto auto;
+    grid-template-areas:
+      "date status status prio"
+      "summary summary summary summary"
+      "epic epic epic epic"
+      "resp resp clt lt"
+      "plano plano plano plano"
+      "risco risco risco risco";
+  }
+  .kanban-card { font-size: 12.5px; }
+  .kanban-card:hover { transform: none; }
+  .kanban-card-cell.truncate-cell.cell-summary { -webkit-line-clamp: 3; line-clamp: 3; font-size: 13.5px; font-weight: 500; }
+  .kanban-card-cell.cell-date { grid-area: date; }
+  .kanban-card-cell.cell-epic { grid-area: epic; }
+  .kanban-card-cell.cell-summary { grid-area: summary; }
+  .kanban-card-cell.cell-status { grid-area: status; }
+  .kanban-card-cell.cell-prio { grid-area: prio; min-width: 34px; }
+  .kanban-card-cell.cell-plano { grid-area: plano; }
+  .kanban-card-cell.cell-resp { grid-area: resp; }
+  .kanban-card-cell.cell-risco { grid-area: risco; }
+  .kanban-card-cell.cell-clt { grid-area: clt; }
+  .kanban-card-cell.cell-lt { grid-area: lt; }
+  .kanban-card:not(.is-open) .cell-plano,
+  .kanban-card:not(.is-open) .cell-risco { display: none; }
+  .kanban-card-cell.cell-plano::before,
+  .kanban-card-cell.cell-risco::before,
+  .kanban-card-cell.cell-resp::before,
+  .kanban-card-cell.cell-clt::before,
+  .kanban-card-cell.cell-lt::before {
+    content: attr(data-label) ': ';
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .kanban-card-cell.cell-plano::before { display: block; }
 }
 
 /* --- Dashboard de Métricas --- */

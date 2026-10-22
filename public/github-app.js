@@ -356,6 +356,24 @@ const COLUMN_TOOLTIPS_WEB = {
     'Racional: mede o tempo efetivo de execução, contado a partir do momento em que o trabalho de fato começou (Start date) — diferente do CLT, não inclui o tempo que o item ficou parado antes de iniciar.'
 };
 
+// Área de cada coluna do card, na mesma ordem de HEADER_LABELS_WEB. O CSS usa
+// essas classes para virar o card em cartão empilhado no celular.
+const CARD_CELL_AREAS_WEB = ['date', 'epic', 'summary', 'status', 'prio', 'plano', 'resp', 'risco', 'clt', 'lt'];
+
+// Marca cada célula com a área e o rótulo da coluna, e faz o toque (ou clique)
+// no card abrir/fechar o texto completo de tudo que estiver cortado.
+function decorateCardCells_(card) {
+  Array.from(card.children).forEach((c, i) => {
+    c.classList.add('cell-' + CARD_CELL_AREAS_WEB[i]);
+    c.dataset.label = HEADER_LABELS_WEB[i];
+  });
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('a')) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    card.classList.toggle('is-open');
+  });
+}
+
 function buildHeaderRow_() {
   const headerRow = document.createElement('div');
   headerRow.className = 'kanban-header-row kanban-row-grid';
@@ -691,6 +709,7 @@ function buildSubtaskRow_(sub, epicColor) {
   row.appendChild(cell(jiraCustomFieldText_(f.customFields && f.customFields['Risco Impacto']) || '-'));
   row.appendChild(cell(cltDays === null ? '-' : cltDays + 'd'));
   row.appendChild(cell(ltDays === null ? '-' : ltDays + 'd'));
+  decorateCardCells_(row);
   return row;
 }
 
@@ -880,6 +899,7 @@ function renderSiteBoard_(issues) {
         ltCell.title = 'Lead Time: ' + (ltDays === null ? '-' : ltDays + ' dia(s), de ' + formatDateWeb_(startDateIso) + ' até ' + (referenceIso ? formatDateWeb_(referenceIso) + ' (Done)' : 'hoje')) +
           (flagged ? '\nBloqueado (flag)' : '');
         card.appendChild(ltCell);
+        decorateCardCells_(card);
 
         const subs = (subtasksByParentKey[issue.key] || [])
           .slice()
